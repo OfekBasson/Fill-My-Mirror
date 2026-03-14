@@ -1,0 +1,44 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Conda / local envs
+.env
+.env.*
+.conda/
+conda-bld/
+env/
+ENV/
+
+# Data / outputs
+data/
+outputs/
+results/
+examples/output/
+
+# Blender install
+external/blender/
+
+# Model files / caches
+.cache/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
