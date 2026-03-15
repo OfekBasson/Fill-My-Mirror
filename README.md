@@ -36,8 +36,6 @@ conda activate fill-my-mirror
 ```bash
 pip install -r requirements.txt
 pip install -e .
-
-`pip install -e .` installs the project as a local Python package so it can be imported from anywhere.
 ```
 ---
 
