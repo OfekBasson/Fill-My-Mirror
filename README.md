@@ -72,9 +72,10 @@ python -m fill_my_mirror.run
 # Citation
 
 If you use this code in your research, please cite:
-
+```bash
 @article{fill_my_mirror,
   title={Fill My Mirror},
   author={...},
   year={2025}
 }
+```
