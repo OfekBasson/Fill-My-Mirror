@@ -1,0 +1,5 @@
+prompt: "Complete the mirror reflection realistically and consistently with the scene geometry."
+
+output: "outputs/result.png"
+
+blender_path: "external/blender/blender-4.4.3-linux-x64/blender"
