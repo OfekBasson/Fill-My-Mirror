@@ -2,7 +2,7 @@
 
 Official implementation of **Fill My Mirror**.
 
-This repository contains the code for generating consistent reflections in mirrors by combining **geometry estimation**, **projection using Blender**, and **diffusion-based inpainting**.
+This repository contains the code for generating consistent reflections in mirrors by combining **geometry estimation**, **projection using Blender**, and **dual-mask diffusion-based inpainting**.
 
 ---
 
@@ -13,32 +13,32 @@ The following instructions were tested on **Linux with Python 3.10**.
 ## 1. Clone the repository
 
 Clone the repository **with submodules** to also download the MoGe dependency.
-
-git clone --recurse-submodules https://github.com/YOUR_USERNAME/fill-my-mirror.git
+```bash
+git clone --recurse-submodules https://github.com/OfekBasson/Fill-My-Mirror.git
 cd fill-my-mirror
-
+```
 If you already cloned without submodules, run:
-
+```bash
 git submodule update --init --recursive
-
+```
 ---
 
 ## 2. Create a Conda environment
 
 Create a clean environment to avoid dependency conflicts.
-
+```bash
 conda create -n fill-my-mirror python=3.10
 conda activate fill-my-mirror
-
+```
 ---
 
 ## 3. Install Python dependencies
-
+```bash
 pip install -r requirements.txt
 pip install -e .
 
 `pip install -e .` installs the project as a local Python package so it can be imported from anywhere.
-
+```
 ---
 
 ## 4. Install Blender
@@ -46,43 +46,29 @@ pip install -e .
 This project requires **Blender** for scene rendering.
 
 Run the provided installation script:
-
+```bash
 bash scripts/install_blender.sh
-
+```
 This downloads and extracts Blender to:
 
 external/blender/
 
 You can verify the installation with:
-
+```bash
 external/blender/blender-4.4.3-linux-x64/blender --version
-
+```
 ---
 
 # Example Usage
 
 Run the example script:
-
+```bash
 bash scripts/run_example.sh
-
+```
 Or run the pipeline directly:
-
+```bash
 python -m fill_my_mirror.run
-
----
-
-# Repository Structure
-
-fill-my-mirror/
-│
-├── fill_my_mirror/        # main source code
-├── third_party/MoGe/      # MoGe geometry estimation submodule
-├── scripts/               # helper scripts
-├── external/blender/      # Blender installation
-├── configs/               # configuration files
-├── examples/              # example inputs and outputs
-└── data/                  # datasets (not tracked by git)
-
+```
 ---
 
 # Citation
