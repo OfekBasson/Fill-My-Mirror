@@ -1,0 +1,14 @@
+numpy
+torch
+torchvision
+diffusers
+transformers
+accelerate
+safetensors
+Pillow
+opencv-python
+scipy
+tqdm
+trimesh
+PyYAML
+git+https://github.com/EasternJournalist/utils3d.git@3913c65d81e05e47b9f367250cf8c0f7462a0900

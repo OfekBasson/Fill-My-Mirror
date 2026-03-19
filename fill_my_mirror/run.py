@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 import yaml
+from fill_my_mirror.geometry import estimate_geometry
 
 
 DEFAULT_CONFIG_PATH = Path("configs/config.yaml")
@@ -70,7 +71,12 @@ def main():
             "Please install it first with: bash scripts/install_blender.sh"
         )
 
-    # geometry
+    geometry = estimate_geometry(
+        image_path=args.image,
+        model_name=config["geometry_model_name"],
+    )
+
+    print("Mesh saved to:", geometry.mesh_path)
     # projection
     # diffusion
     # save result

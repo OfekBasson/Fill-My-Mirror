@@ -3,3 +3,5 @@ prompt: "Complete the mirror reflection realistically and consistently with the 
 output: "outputs/result.png"
 
 blender_path: "external/blender/blender-4.4.3-linux-x64/blender"
+
+geometry_model_name: "Ruicheng/moge-2-vitl-normal"

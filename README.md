@@ -49,6 +49,7 @@ conda activate fill-my-mirror
 
 ```bash
 pip install -r requirements.txt
+pip install -e third_party/MoGe
 pip install -e .
 ```
 
@@ -157,6 +158,7 @@ Example configuration:
 prompt: "Complete the mirror reflection realistically and consistently with the scene geometry, preserving the visible scene content, perspective, lighting, and object identity."
 output: "outputs/result.png"
 blender_path: "external/blender/blender-4.4.3-linux-x64/blender"
+geometry_model_name: "Ruicheng/moge-2-vitl-normal"
 ```
 
 ---
@@ -179,8 +181,7 @@ Basic example:
 
 ```bash
 python -m fill_my_mirror \
-  --image examples/input/example.jpg \
-  --mask examples/input/example_mask.png
+--image data/real_images/images/0.png \ --mask data/real_images/masks/0.png --prompt "A standing mirror reflects a bed with a dotted cover in a cozy bedroom. Above the bed is a brown rattan headboard and a window with dark gray aluminum."
 ```
 
 Example with custom output path:
