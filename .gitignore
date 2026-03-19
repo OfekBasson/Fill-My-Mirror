@@ -42,3 +42,6 @@ external/blender/
 *.pth
 *.ckpt
 *.safetensors
+
+# generated outputs
+temp_outputs/
