@@ -45,3 +45,6 @@ external/blender/
 
 # generated outputs
 temp_outputs/
+
+# generated outputs
+temp_outputs/
