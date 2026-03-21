@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 import yaml
 from fill_my_mirror.geometry import estimate_geometry
-
+from fill_my_mirror.projection import run_projection
 
 DEFAULT_CONFIG_PATH = Path("configs/config.yaml")
 
@@ -73,10 +73,18 @@ def main():
 
     geometry = estimate_geometry(
         image_path=args.image,
+        mirror_mask_path=args.mask,
         model_name=config["geometry_model_name"],
     )
 
     print("Mesh saved to:", geometry.mesh_path)
+    
+    projection = run_projection(
+        geometry_output=geometry,
+        image_path=args.image,
+        mirror_mask_path=args.mask,
+        blender_path=config["blender_path"],
+    )
     # projection
     # diffusion
     # save result

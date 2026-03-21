@@ -22,6 +22,7 @@ class GeometryOutput:
     depth: np.ndarray
     mask: np.ndarray
     intrinsics: np.ndarray
+    mirror_points: np.ndarray
 
 
 class GeometryEstimator:
@@ -35,7 +36,7 @@ class GeometryEstimator:
         self.model = MoGeModel.from_pretrained(model_name).to(self.device)
         self.model.eval()
 
-    def predict(self, image_path: str) -> GeometryOutput:
+    def predict(self, image_path: str, mirror_mask_path: str) -> GeometryOutput:
 
         image = cv2.imread(image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -47,6 +48,16 @@ class GeometryEstimator:
             .permute(2, 0, 1)
             .to(self.device)
         )
+        
+        mirror_mask = cv2.imread(mirror_mask_path, cv2.IMREAD_GRAYSCALE)
+        if mirror_mask is None:
+            raise FileNotFoundError(f"Could not read mirror mask: {mirror_mask_path}")
+        mirror_mask = mirror_mask > 127
+
+        if mirror_mask.shape != image.shape[:2]:
+            raise ValueError(
+                f"Mirror mask shape {mirror_mask.shape} does not match image shape {image.shape[:2]}"
+            )
 
         with torch.inference_mode():
             output = self.model.infer(
@@ -55,10 +66,15 @@ class GeometryEstimator:
                 apply_mask=True
             )
 
-        points = output["points"].cpu().numpy()
+        points = output["points"].cpu().numpy().astype(np.float32)
+        points = points * np.array([-1.0, -1.0, 1.0], dtype=np.float32)
         depth = output["depth"].cpu().numpy()
         mask = output["mask"].cpu().numpy()
         intrinsics = output["intrinsics"].cpu().numpy()
+        
+        mask = mask.astype(bool)
+        mirror_points_mask = mirror_mask & mask
+        mirror_points = points[mirror_points_mask]
 
         # ---------- compute geometry attributes ----------
 
@@ -71,23 +87,23 @@ class GeometryEstimator:
             utils3d.numpy.depth_map_edge(depth, rtol=0.03, mask=mask) &
             utils3d.numpy.normal_map_edge(normals, tol=5, mask=normals_mask)
         )
+        
+        mesh_mask = final_mask & (~mirror_mask)
 
         uv_map = utils3d.np.uv_map((height, width))
         faces, vertices, vertex_colors, vertex_uvs = utils3d.np.build_mesh_from_map(
             points,
             image.astype(np.float32) / 255.0,
             uv_map,
-            mask=final_mask,
+            mask=mesh_mask,
             tri=True,
         )
-
-        vertices = vertices * [1, -1, -1]
         vertex_uvs = vertex_uvs * [1, -1] + [0, 1]
 
         # ---------- build mesh ----------
 
         mesh = trimesh.Trimesh(
-            vertices=vertices * [-1, 1, -1],
+            vertices=vertices,
             faces=faces,
             visual=trimesh.visual.texture.TextureVisuals(
                 uv=vertex_uvs,
@@ -102,20 +118,22 @@ class GeometryEstimator:
 
         mesh_path = TEMP_OUTPUT_DIR / "geometry_mesh.glb"
         mesh.export(mesh_path)
-
+        print(f'intrinsics: {intrinsics}')
         return GeometryOutput(
             mesh_path=mesh_path,
             points=points,
             depth=depth,
             mask=mask,
-            intrinsics=intrinsics
+            intrinsics=intrinsics,
+            mirror_points=mirror_points
         )
 
 
-def estimate_geometry(image_path: str, model_name: str):
+def estimate_geometry(image_path: str, mirror_mask_path: str, model_name: str):
 
     estimator = GeometryEstimator(
         model_name=model_name
     )
 
-    return estimator.predict(image_path)
+    return estimator.predict(image_path, mirror_mask_path)
+
