@@ -20,7 +20,6 @@ class GeometryOutput:
     mesh_path: Path
     points: np.ndarray
     depth: np.ndarray
-    mask: np.ndarray
     intrinsics: np.ndarray
     mirror_points: np.ndarray
 
@@ -69,26 +68,26 @@ class GeometryEstimator:
         points = output["points"].cpu().numpy().astype(np.float32)
         points = points * np.array([-1.0, -1.0, 1.0], dtype=np.float32)
         depth = output["depth"].cpu().numpy()
-        mask = output["mask"].cpu().numpy()
+        valid_mask = output["mask"].cpu().numpy()
         intrinsics = output["intrinsics"].cpu().numpy()
         
-        mask = mask.astype(bool)
-        mirror_points_mask = mirror_mask & mask
+        valid_mask = valid_mask.astype(bool)
+        mirror_points_mask = mirror_mask & valid_mask
         mirror_points = points[mirror_points_mask]
 
         # ---------- compute geometry attributes ----------
 
         normals, normals_mask = utils3d.numpy.point_map_to_normal_map(
             points,
-            mask=mask
+            mask=valid_mask
         )
 
-        final_mask = mask & ~(
-            utils3d.numpy.depth_map_edge(depth, rtol=0.03, mask=mask) &
+        surface_mask = valid_mask & ~(
+            utils3d.numpy.depth_map_edge(depth, rtol=0.03, mask=valid_mask) &
             utils3d.numpy.normal_map_edge(normals, tol=5, mask=normals_mask)
         )
         
-        mesh_mask = final_mask & (~mirror_mask)
+        mesh_mask = surface_mask & (~mirror_mask)
 
         uv_map = utils3d.np.uv_map((height, width))
         faces, vertices, vertex_colors, vertex_uvs = utils3d.np.build_mesh_from_map(
@@ -118,12 +117,11 @@ class GeometryEstimator:
 
         mesh_path = TEMP_OUTPUT_DIR / "geometry_mesh.glb"
         mesh.export(mesh_path)
-        print(f'intrinsics: {intrinsics}')
+
         return GeometryOutput(
             mesh_path=mesh_path,
             points=points,
             depth=depth,
-            mask=mask,
             intrinsics=intrinsics,
             mirror_points=mirror_points
         )

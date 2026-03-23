@@ -62,9 +62,8 @@ def run_projection(
         image_shape=image.shape[:2],
         output_path=raw_render_path,
         bw_output_path=raw_bw_render_path,
-        front_back_facing_flip=False,
     )
-
+    raise Exception()
     rendered_image = load_rgb_image(raw_render_path)
     bw_rendered_image = load_rgb_image(raw_bw_render_path)
 
