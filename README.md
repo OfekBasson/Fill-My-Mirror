@@ -8,7 +8,7 @@ Official implementation of **Fill My Mirror**.
 <!-- Add emojis -->
 <!-- Add link to dataset download -->
 <!-- Add minimal code example -->
-
+<!-- Remove all hardcoded text (only in the yaml file is fine) -->
 This repository contains the code for generating consistent reflections in mirrors by combining **geometry estimation**, **projection using Blender**, and **dual-mask diffusion-based inpainting**.
 
 ---

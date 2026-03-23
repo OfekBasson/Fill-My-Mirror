@@ -6,9 +6,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from fill_my_mirror.blender_render import render_with_blender
+from fill_my_mirror.blender import render_with_blender
 from fill_my_mirror.geometry import GeometryOutput
-from fill_my_mirror.projection_utils import (
+from .utils import (
     TEMP_OUTPUT_DIR,
     build_inpainting_mask,
     build_reflected_mesh,
@@ -52,8 +52,8 @@ def run_projection(
         mesh_path=geometry_output.mesh_path,
         plane=plane,
     )
-    raw_render_path = TEMP_OUTPUT_DIR / "raw_projection.png"
-    raw_bw_render_path = TEMP_OUTPUT_DIR / "raw_projection_bw.png"
+    raw_render_path = TEMP_OUTPUT_DIR / "reflected_scene_raw.png"
+    raw_bw_render_path = TEMP_OUTPUT_DIR / "bw_reflected_scene_raw.png"
 
     render_with_blender(
         blender_path=blender_path,

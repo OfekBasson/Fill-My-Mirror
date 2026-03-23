@@ -85,7 +85,7 @@ def main():
         mirror_mask_path=args.mask,
         blender_path=config["blender_path"],
     )
-    # projection
+    
     # diffusion
     # save result
 

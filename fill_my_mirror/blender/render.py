@@ -9,7 +9,7 @@ import numpy as np
 TEMP_OUTPUT_DIR = Path("temp_outputs")
 TEMP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-BLENDER_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "fill_my_mirror" / "blender_script.py"
+BLENDER_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "blender" / "blender_entrypoint.py"
 
 def render_with_blender(
     blender_path: str | Path,
