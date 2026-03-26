@@ -11,6 +11,7 @@ Official implementation of **Fill My Mirror**.
 <!-- Remove all hardcoded text (only in the yaml file is fine) -->
 <!-- Add seed option -->
 <!-- Remove masked_image_latents from the __call__ function (or do 2 latents to pass, one for each mask) -->
+<!-- If the resolution doesn't fit the aspect ratio - check it in the run.py -->
 This repository contains the code for generating consistent reflections in mirrors by combining **geometry estimation**, **projection using Blender**, and **dual-mask diffusion-based inpainting**.
 
 ---

@@ -22,6 +22,8 @@ def run_dual_mask_inpainting(
     num_images_per_prompt: int = 1,
     max_sequence_length: int = 512,
     seed: int = 0,
+    height: int = 1024,
+    width: int = 1024,
     n: float = 6.0,
     t_prime: float = 750.0,
     torch_dtype: torch.dtype = torch.bfloat16,
@@ -50,16 +52,16 @@ def run_dual_mask_inpainting(
         torch_dtype=torch_dtype,
     ).to(device)
 
-    generator = torch.Generator("cpu").manual_seed(seed)
-
+    generator = torch.Generator("cuda").manual_seed(seed)
+    
     result = pipe(
         prompt=prompt,
         prompt_2=prompt_2,
         image=image,
-        geometry_constraint_mask=geometry_constraint_mask,
-        generative_refinement_mask=generative_refinement_mask,
-        height=image.height,
-        width=image.width,
+        geometry_constraint_mask_image=geometry_constraint_mask,
+        generative_refinement_mask_image=generative_refinement_mask,
+        height=height,
+        width=width,
         strength=strength,
         num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,

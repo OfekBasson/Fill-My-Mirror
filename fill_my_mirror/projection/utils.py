@@ -144,4 +144,8 @@ def build_inpainting_mask(
 
     output = np.zeros_like(bw_gray, dtype=np.uint8)
     output[inpainting_region] = 255
+    
+    kernel = np.ones((5, 5), np.uint8)
+    output = cv2.dilate(output, kernel, iterations=2)
+    
     return output

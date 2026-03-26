@@ -4,7 +4,8 @@ from typing import Any, Callable
 
 import numpy as np
 import torch
-from diffusers import FluxFillPipeline, FluxPipelineOutput
+from diffusers import FluxFillPipeline
+from diffusers.pipelines.flux.pipeline_output import FluxPipelineOutput
 import inspect
 from diffusers.utils import logging
 

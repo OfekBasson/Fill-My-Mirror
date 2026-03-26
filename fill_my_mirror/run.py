@@ -89,6 +89,18 @@ def main():
         help="Power n for alpha^n interpolation."
     )
     parser.add_argument(
+        "--height",
+        type=float,
+        default=1024,
+        help="Height of the desired image."
+    )
+    parser.add_argument(
+        "--width",
+        type=float,
+        default=1024,
+        help="Width of the desired image."
+    )
+    parser.add_argument(
         "--t-prime",
         type=float,
         default=750.0,
@@ -144,7 +156,7 @@ def main():
     run_dual_mask_inpainting(
         prompt=prompt,
         projected_image_path=projection.projected_image_path,
-        geometry_constraint_mask_path=projection.inpainting_mask_path,
+        geometry_constraint_mask_path=projection.geometry_constraint_mask_path,
         generative_refinement_mask_path=args.mask,
         output_path=output_path,
         model_name=config["inpainting_model_name"],
@@ -155,6 +167,8 @@ def main():
         num_images_per_prompt=args.num_images_per_prompt,
         max_sequence_length=args.max_sequence_length,
         seed=args.seed,
+        height=args.height,
+        width=args.width,
         n=args.n,
         t_prime=args.t_prime,
     )
