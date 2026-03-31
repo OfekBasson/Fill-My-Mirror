@@ -1,4 +1,4 @@
-# Fill My Mirror
+# 🪞 Fill My Mirror
 <!-- Add link to the paper and project page (beautiful like in MoGe repo) -->
 <!-- Add demo -->
 <!-- Remove all hardcoded text (only in the yaml file is fine) -->
