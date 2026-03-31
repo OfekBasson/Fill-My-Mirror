@@ -1,9 +1,9 @@
 # 🪞 Fill My Mirror
 <!-- Add link to the paper and project page (beautiful like in MoGe repo) -->
-<!-- Add demo -->
 <!-- Remove all hardcoded text (only in the yaml file is fine) -->
 <!-- Remove masked_image_latents from the __call__ function (or do 2 latents to pass, one for each mask) -->
-<!-- TODO: Change the hf to be "prompt" instead of "caption" (both in hf and in the loading code and in the README) -->
+<!-- TODO: Implement run_example.sh -->
+<!-- Add demo -->
 <p align="center">
   <a href="https://google.com">📄 Paper</a> &nbsp;|&nbsp;
   <a href="TODO">🌐 Project Page</a> &nbsp;|&nbsp;
@@ -134,7 +134,7 @@ Both `--image` and `--mask` must be provided together.
 
 Index of a sample from the HuggingFace dataset (0 to dataset size − 1).  
 The dataset repo is read from `hf_dataset_repo` in the config file.  
-The sample's caption is used as the prompt unless `--prompt` is also given.
+The sample's prompt is used as the prompt unless `--prompt` is also given.
 
 ---
 
@@ -152,7 +152,7 @@ Default: `configs/config.yaml`
 ```
 
 Text prompt for the diffusion model.  
-If provided, it overrides the config file value and any caption from the HuggingFace sample.
+If provided, it overrides the config file value and any prompt from the HuggingFace sample.
 
 ```bash
 --prompt-2 "SECOND PROMPT"
@@ -290,7 +290,7 @@ It contains 50 real-world mirror scenes with the following columns per sample:
 | `image` | Input image (mirror region visible) |
 | `mask` | Binary mask of the mirror region |
 | `gt_image` | Ground-truth image (mirror filled) |
-| `caption` | Text description of the scene |
+| `prompt` | Text description of the scene |
 
 ```python
 from datasets import load_dataset

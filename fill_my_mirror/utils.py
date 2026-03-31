@@ -24,7 +24,7 @@ def load_hf_sample(repo: str, index: int) -> tuple[str, str, str | None]:
     sample["image"].save(image_path)
     sample["mask"].save(mask_path)
 
-    prompt = sample.get("caption") or None
+    prompt = sample.get("prompt") or None
     return str(image_path), str(mask_path), prompt
 
 
