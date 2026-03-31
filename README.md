@@ -1,14 +1,18 @@
 # Fill My Mirror
-
+<!-- Add link to the paper and project page (beautiful like in MoGe repo) -->
+<!-- Add demo -->
+<!-- Remove all hardcoded text (only in the yaml file is fine) -->
+<!-- Remove masked_image_latents from the __call__ function (or do 2 latents to pass, one for each mask) -->
+<!-- TODO: Change the hf to be "prompt" instead of "caption" (both in hf and in the loading code and in the README) -->
 <p align="center">
   <a href="https://google.com">📄 Paper</a> &nbsp;|&nbsp;
   <a href="TODO">🌐 Project Page</a> &nbsp;|&nbsp;
-  <a href="TODO">📦 Dataset</a>
+  <a href="https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror">📦 Dataset</a>
 </p>
 
 Official implementation of **Fill My Mirror**.
 
-This repository contains the code for generating consistent reflections in mirrors by combining **geometry estimation**, **projection using Blender**, and **dual-mask diffusion-based inpainting**.
+This repository contains the code for generating consistent reflections in mirrors by combining **geometry estimation**, **projection**, and **dual-mask diffusion-based inpainting**.
 
 ---
 
@@ -130,7 +134,7 @@ Both `--image` and `--mask` must be provided together.
 
 Index of a sample from the HuggingFace dataset (0 to dataset size − 1).  
 The dataset repo is read from `hf_dataset_repo` in the config file.  
-If the sample includes a caption, it is used as the prompt unless `--prompt` is also given.
+The sample's caption is used as the prompt unless `--prompt` is also given.
 
 ---
 
@@ -235,17 +239,6 @@ hf_dataset_repo: "OfekBassonResearch/Fill-My-Mirror"
 
 ---
 
-# 📌 Notes
-
-Blender is expected at the path specified in the configuration file.
-
-If Blender is missing, install it with:
-
-```bash
-bash scripts/install_blender.sh
-```
-
----
 
 # 💡 Example Commands
 
@@ -288,7 +281,7 @@ python -m fill_my_mirror \
 
 The dataset used in this paper is available on Hugging Face:
 
-**[OfekBasson/fill-my-mirror](https://huggingface.co/datasets/OfekBasson/fill-my-mirror)**
+**[OfekBassonResearch/Fill-My-Mirror](https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror)**
 
 It contains 50 real-world mirror scenes with the following columns per sample:
 
@@ -305,14 +298,6 @@ from datasets import load_dataset
 ds = load_dataset("OfekBasson/fill-my-mirror")["test"]
 sample = ds[0]
 sample["image"].show()
-```
-
-To upload the dataset yourself, run:
-
-```bash
-pip install datasets huggingface_hub
-huggingface-cli login
-python scripts/upload_dataset_to_hf.py --repo OfekBasson/fill-my-mirror
 ```
 
 ---
