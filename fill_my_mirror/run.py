@@ -4,6 +4,7 @@ import yaml
 from fill_my_mirror.geometry import estimate_geometry
 from fill_my_mirror.projection import run_projection
 from fill_my_mirror.dual_mask_inpainting import run_dual_mask_inpainting
+from fill_my_mirror.utils import load_hf_sample, check_and_fix_aspect_ratio
 
 DEFAULT_CONFIG_PATH = Path("configs/config.yaml")
 
@@ -25,14 +26,20 @@ def main():
     parser.add_argument(
         "--image",
         type=str,
-        required=True,
-        help="Path to the input image."
+        default=None,
+        help="Path to the input image. Required unless --hf-index is provided."
     )
     parser.add_argument(
         "--mask",
         type=str,
-        required=True,
-        help="Path to the mirror mask."
+        default=None,
+        help="Path to the mirror mask. Required unless --hf-index is provided."
+    )
+    parser.add_argument(
+        "--hf-index",
+        type=int,
+        default=None,
+        help="Index of a sample from the HuggingFace dataset (alternative to --image/--mask)."
     )
     parser.add_argument(
         "--prompt",
@@ -115,6 +122,17 @@ def main():
 
     args = parser.parse_args()
 
+    # Validate input mode: must provide either --hf-index OR (--image + --mask)
+    using_hf = args.hf_index is not None
+    using_files = args.image is not None or args.mask is not None
+
+    if using_hf and using_files:
+        parser.error("Provide either --hf-index OR (--image and --mask), not both.")
+    if not using_hf and not using_files:
+        parser.error("Provide either --hf-index or both --image and --mask.")
+    if using_files and (args.image is None or args.mask is None):
+        parser.error("Both --image and --mask must be provided together.")
+
     config_path = Path(args.config)
     config = load_config(config_path)
 
@@ -124,10 +142,19 @@ def main():
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    if using_hf:
+        image_path, mask_path, hf_prompt = load_hf_sample(config["hf_dataset_repo"], args.hf_index)
+        if hf_prompt and args.prompt is None:
+            prompt = hf_prompt
+    else:
+        image_path, mask_path = args.image, args.mask
+
+    width = check_and_fix_aspect_ratio(image_path, int(args.height), int(args.width))
+
     print("Running Fill My Mirror pipeline")
     print(f"Config: {config_path}")
-    print(f"Image: {args.image}")
-    print(f"Mask: {args.mask}")
+    print(f"Image: {image_path}")
+    print(f"Mask: {mask_path}")
     print(f"Prompt: {prompt}")
     print(f"Output: {output_path}")
     print(f"Blender: {blender_path}")
@@ -139,25 +166,25 @@ def main():
         )
 
     geometry = estimate_geometry(
-        image_path=args.image,
-        mirror_mask_path=args.mask,
+        image_path=image_path,
+        mirror_mask_path=mask_path,
         model_name=config["geometry_model_name"],
     )
 
     print("Mesh saved to:", geometry.mesh_path)
-    
+
     projection = run_projection(
         geometry_output=geometry,
-        image_path=args.image,
-        mirror_mask_path=args.mask,
+        image_path=image_path,
+        mirror_mask_path=mask_path,
         blender_path=config["blender_path"],
     )
-    
+
     run_dual_mask_inpainting(
         prompt=prompt,
         projected_image_path=projection.projected_image_path,
         geometry_constraint_mask_path=projection.geometry_constraint_mask_path,
-        generative_refinement_mask_path=args.mask,
+        generative_refinement_mask_path=mask_path,
         output_path=output_path,
         model_name=config["inpainting_model_name"],
         prompt_2=args.prompt_2,
@@ -168,7 +195,7 @@ def main():
         max_sequence_length=args.max_sequence_length,
         seed=args.seed,
         height=args.height,
-        width=args.width,
+        width=width,
         n=args.n,
         t_prime=args.t_prime,
     )

@@ -46,3 +46,5 @@ external/blender/
 # generated outputs
 temp_outputs/
 
+# Extras
+upload_dataset_to_hf.py
