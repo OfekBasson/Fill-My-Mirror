@@ -48,3 +48,4 @@ temp_outputs/
 
 # Extras
 upload_dataset_to_hf.py
+upload_blender_dataset_to_hf.py
