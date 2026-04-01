@@ -1,31 +1,5 @@
-import tempfile
 import warnings
-from pathlib import Path
 from PIL import Image
-
-
-def load_hf_sample(repo: str, index: int) -> tuple[str, str, str | None]:
-    """Load image and mask from a HF dataset sample.
-
-    Returns:
-        (image_path, mask_path, prompt) where paths point to temp PNG files.
-    """
-    from datasets import load_dataset
-
-    ds = load_dataset(repo, split="test")
-    if index < 0 or index >= len(ds):
-        raise ValueError(f"--hf-index must be between 0 and {len(ds) - 1}, got {index}")
-
-    sample = ds[index]
-    tmp_dir = Path(tempfile.mkdtemp(prefix="fill_my_mirror_hf_"))
-
-    image_path = tmp_dir / "image.png"
-    mask_path = tmp_dir / "mask.png"
-    sample["image"].save(image_path)
-    sample["mask"].save(mask_path)
-
-    prompt = sample.get("prompt") or None
-    return str(image_path), str(mask_path), prompt
 
 
 def check_and_fix_aspect_ratio(image_path: str, height: int, width: int) -> int:

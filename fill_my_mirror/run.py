@@ -4,7 +4,8 @@ import yaml
 from fill_my_mirror.geometry import estimate_geometry
 from fill_my_mirror.projection import run_projection
 from fill_my_mirror.dual_mask_inpainting import run_dual_mask_inpainting
-from fill_my_mirror.utils import load_hf_sample, check_and_fix_aspect_ratio
+from fill_my_mirror.loaders import SampleLoader, RealImageSampleLoader, BlenderSampleLoader, RealImageSample
+from fill_my_mirror.utils import check_and_fix_aspect_ratio
 
 DEFAULT_CONFIG_PATH = Path("configs/config.yaml")
 
@@ -119,15 +120,24 @@ def main():
         default=None,
         help="Path to save the final output image. Overrides the config file."
     )
+    parser.add_argument(
+        "--use-blender-data",
+        action="store_true",
+        default=False,
+        help="Load from the Blender HuggingFace dataset. Requires --hf-index."
+    )
 
     args = parser.parse_args()
 
-    using_hf = args.hf_index is not None
+    using_blender_hf = args.use_blender_data
+    using_real_hf = args.hf_index is not None and not using_blender_hf
     using_files = args.image is not None or args.mask is not None
 
-    if using_hf and using_files:
+    if using_blender_hf and args.hf_index is None:
+        parser.error("--use-blender-data requires --hf-index.")
+    if (using_real_hf or using_blender_hf) and using_files:
         parser.error("Provide either --hf-index OR (--image and --mask), not both.")
-    if not using_hf and not using_files:
+    if not using_real_hf and not using_blender_hf and not using_files:
         parser.error("Provide either --hf-index or both --image and --mask.")
     if using_files and (args.image is None or args.mask is None):
         parser.error("Both --image and --mask must be provided together.")
@@ -141,12 +151,23 @@ def main():
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if using_hf:
-        image_path, mask_path, hf_prompt = load_hf_sample(config["hf_dataset_repo"], args.hf_index)
-        if hf_prompt and args.prompt is None:
-            prompt = hf_prompt
+    loader: SampleLoader | None = None
+    if using_blender_hf:
+        loader = BlenderSampleLoader(config["hf_blender_dataset_repo"])
+    elif using_real_hf:
+        loader = RealImageSampleLoader(config["hf_dataset_repo"])
+
+    if loader is not None:
+        if not (0 <= args.hf_index < len(loader)):
+            parser.error(f"--hf-index must be between 0 and {len(loader) - 1}, got {args.hf_index}.")
+        sample = loader.load(args.hf_index)
+        if sample.prompt and args.prompt is None:
+            prompt = sample.prompt
     else:
-        image_path, mask_path = args.image, args.mask
+        sample = RealImageSample(image_path=args.image, mask_path=args.mask, prompt=None)
+    
+    image_path = sample.image_path
+    mask_path = sample.mask_path
 
     width = check_and_fix_aspect_ratio(image_path, int(args.height), int(args.width))
 
@@ -164,11 +185,7 @@ def main():
             "Please install it first with: bash scripts/install_blender.sh"
         )
 
-    geometry = estimate_geometry(
-        image_path=image_path,
-        mirror_mask_path=mask_path,
-        model_name=config["geometry_model_name"],
-    )
+    geometry = estimate_geometry(sample, config["geometry_model_name"])
 
     print("Mesh saved to:", geometry.mesh_path)
 

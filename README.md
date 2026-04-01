@@ -210,6 +210,13 @@ Maximum text sequence length.
 Random seed for reproducibility.
 
 ```bash
+--use-blender-data
+```
+
+Load a sample from the Blender HuggingFace dataset instead of the real-image dataset.  
+Requires `--hf-index`. When set, geometry is read directly from the dataset (no MoGe inference).
+
+```bash
 --n 6.0
 ```
 
@@ -234,6 +241,7 @@ blender_path: "external/blender/blender-4.4.3-linux-x64/blender"
 geometry_model_name: "Ruicheng/moge-2-vitl-normal"
 inpainting_model_name: "black-forest-labs/FLUX.1-Fill-dev"
 hf_dataset_repo: "OfekBassonResearch/Fill-My-Mirror"
+hf_blender_dataset_repo: "OfekBassonResearch/Fill-My-Mirror-Blender"
 ```
 
 ---
