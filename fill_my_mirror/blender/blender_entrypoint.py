@@ -107,7 +107,6 @@ def setup_bw_materials():
 
         links.new(geo_node.outputs["Backfacing"], mix_shader.inputs["Fac"])
 
-        # front-facing = black, back-facing = white
         links.new(emission_black.outputs["Emission"], mix_shader.inputs[2])
         links.new(emission_white.outputs["Emission"], mix_shader.inputs[1])
         links.new(mix_shader.outputs["Shader"], output_node.inputs["Surface"])
@@ -123,16 +122,12 @@ def setup_camera(intrinsics, height, width):
     bpy.context.scene.camera = cam
 
     fx_norm = intrinsics[0, 0]
-    # cx_norm = intrinsics[0, 2] # TODO: Why doesn't this appear in the original code?
-    # cy_norm = intrinsics[1, 2] # TODO: Why doesn't this appear in the original code?
 
     sensor_width = cam.data.sensor_width
     fx_px = fx_norm * width
     focal_length_mm = fx_px * (sensor_width / width)
 
     cam.data.lens = focal_length_mm
-    # cam.data.shift_x = cx_norm - 0.5 # TODO: Why doesn't this appear in the original code? 
-    # cam.data.shift_y = 0.5 - cy_norm # TODO: Why doesn't this appear in the original code?
 
     cam.matrix_world = CAMERA_MATRIX_WORLD
 
@@ -163,7 +158,7 @@ def main():
     scene.render.resolution_y = height
     scene.render.engine = "BLENDER_EEVEE_NEXT"
     scene.render.image_settings.file_format = "PNG"
-    scene.render.film_transparent = False # TODO: What's this???
+    scene.render.film_transparent = False
 
     setup_camera(intrinsics, height, width)
 

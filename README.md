@@ -1,10 +1,7 @@
 # 🪞 Fill My Mirror
-<!-- Add link to the paper and project page (beautiful like in MoGe repo) -->
-<!-- Remove all hardcoded text (only in the yaml file is fine) -->
-<!-- Remove masked_image_latents from the __call__ function (or do 2 latents to pass, one for each mask) -->
 <!-- TODO: Implement run_example.sh -->
 <!-- Add demo -->
-<!-- Are there conventions in the links colors and more? -->
+<!-- Add the Blender images Dataset as glb files -->
 <div align="center">
   <a href="https://google.com"><img src='https://img.shields.io/badge/arXiv-Paper-red?logo=arxiv&logoColor=white' alt='arXiv'></a>
   <a href='TODO'><img src='https://img.shields.io/badge/Project_Page-Website-green?logo=googlechrome&logoColor=white' alt='Project Page'></a>

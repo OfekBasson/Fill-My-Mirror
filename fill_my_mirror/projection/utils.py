@@ -136,9 +136,6 @@ def build_inpainting_mask(
     else:
         bw_gray = bw_rendered_image
 
-    # White means "needs inpainting":
-    # - background that was not projected
-    # - back-facing triangles rendered white in the BW pass
     white_region = bw_gray > 127
     inpainting_region = mirror_mask & white_region
 

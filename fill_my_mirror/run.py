@@ -122,7 +122,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Validate input mode: must provide either --hf-index OR (--image + --mask)
     using_hf = args.hf_index is not None
     using_files = args.image is not None or args.mask is not None
 
