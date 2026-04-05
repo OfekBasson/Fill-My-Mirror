@@ -8,6 +8,29 @@ version = "0.1.0"
 description = "Official implementation of Fill My Mirror"
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [
+    { name = "Ofek Basson" },
+    { name = "Shimon Vainer" },
+    { name = "Yacov Hel-Or" },
+    { name = "Ohad Fried" },
+]
+dependencies = [
+    "numpy>=2.2.6",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+    "diffusers>=0.37.1",
+    "transformers>=5.3.0",
+    "accelerate>=1.13.0",
+    "safetensors>=0.7.0",
+    "Pillow>=12.1.1",
+    "opencv-python>=4.13.0.92",
+    "scipy>=1.15.3",
+    "tqdm>=4.67.3",
+    "trimesh>=4.11.3",
+    "PyYAML>=6.0.3",
+    "datasets>=4.8.4",
+    "huggingface_hub>=1.7.1",
+]
 
 [tool.setuptools.packages.find]
 include = ["fill_my_mirror*"]
