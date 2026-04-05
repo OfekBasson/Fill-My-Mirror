@@ -121,6 +121,12 @@ def main():
         help="Path to save the final output image. Overrides the config file."
     )
     parser.add_argument(
+        "--blender_path",
+        type=str,
+        default=None,
+        help="Path to Blender."
+    )
+    parser.add_argument(
         "--use-blender-data",
         action="store_true",
         default=False,
@@ -147,7 +153,7 @@ def main():
 
     prompt = args.prompt if args.prompt is not None else config["prompt"]
     output_path = Path(args.output_path) if args.output_path is not None else Path(config["default_output_path"])
-    blender_path = Path(config["blender_path"])
+    blender_path = Path(args.blender_path) if args.blender_path is not None else Path(config["blender_path"])
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
