@@ -8,7 +8,7 @@
   <a href='https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20Real%20Images-blue'></a>
   <a href='https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror-Blender'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20Blender%20Scenes-blue'></a>
 </div>
-
+<br>
 Official implementation of **Fill My Mirror**.
 
 This repository contains the code for generating consistent reflections in mirrors by combining **geometry estimation**, **projection**, and **dual-mask diffusion-based inpainting**.
@@ -73,12 +73,6 @@ This downloads and extracts Blender to:
 external/blender/
 ```
 
-You can verify the installation with:
-
-```bash
-external/blender/blender-4.4.3-linux-x64/blender --version
-```
-
 ---
 
 # 🚀 Quick Start
@@ -86,7 +80,7 @@ external/blender/blender-4.4.3-linux-x64/blender --version
 Run the example script:
 
 ```bash
-bash scripts/run_example.sh
+scripts/run_example.sh
 ```
 
 Or run directly with your own image and mask:
