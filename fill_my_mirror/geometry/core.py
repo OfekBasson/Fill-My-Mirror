@@ -78,13 +78,12 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
         points = output["points"].cpu().numpy().astype(np.float32)
         points = points * np.array([-1.0, -1.0, 1.0], dtype=np.float32)
         depth = output["depth"].cpu().numpy()
-        valid_mask = output["mask"].cpu().numpy().astype(bool)
         intrinsics = output["intrinsics"].cpu().numpy()
 
-        mirror_points = points[mirror_mask & valid_mask]
+        mirror_points = points[mirror_mask]
 
         return GeometryOutput(
-            mesh_path=_build_mesh(image, points, depth, valid_mask, mirror_mask),
+            mesh_path=_build_mesh(image, points, depth, mirror_mask),
             points=points,
             depth=depth,
             intrinsics=intrinsics,
@@ -104,11 +103,14 @@ class BlenderGeometryProcessor(GeometryProcessorBase):
 
         image = cv2.imread(sample.image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        mirror_mask = cv2.imread(sample.mask_path, cv2.IMREAD_GRAYSCALE)
+        mirror_mask = mirror_mask > 127
 
-        mirror_points = sample.points[sample.mirror_mask & sample.valid_mask]
+        mirror_points = sample.points[mirror_mask]
 
         return GeometryOutput(
-            mesh_path=_build_mesh(image, sample.points, sample.depth, sample.valid_mask, sample.mirror_mask),
+            mesh_path=_build_mesh(image, sample.points, sample.depth, mirror_mask),
             points=sample.points,
             depth=sample.depth,
             intrinsics=sample.intrinsics,
@@ -120,7 +122,6 @@ def _build_mesh(
     image: np.ndarray,
     points: np.ndarray,
     depth: np.ndarray,
-    valid_mask: np.ndarray,
     mirror_mask: np.ndarray,
 ) -> Path:
     """Build and export a textured GLB mesh. Returns the path to the exported file."""
@@ -129,11 +130,11 @@ def _build_mesh(
 
     normals, normals_mask = utils3d.numpy.point_map_to_normal_map(
         points,
-        mask=valid_mask
+        mask=np.ones((height, width), dtype=bool),
     )
 
-    surface_mask = valid_mask & ~(
-        utils3d.numpy.depth_map_edge(depth, rtol=0.03, mask=valid_mask) &
+    surface_mask = ~(
+        utils3d.numpy.depth_map_edge(depth, rtol=0.03) &
         utils3d.numpy.normal_map_edge(normals, tol=5, mask=normals_mask)
     )
 

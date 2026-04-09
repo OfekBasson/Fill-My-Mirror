@@ -9,6 +9,7 @@
   <a href='https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror-Blender'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20Blender%20Scenes-blue'></a>
 </div>
 <br>
+
 Official implementation of **Fill My Mirror**.
 
 This repository contains the code for generating consistent reflections in mirrors by combining **geometry estimation**, **projection**, and **dual-mask diffusion-based inpainting**.
@@ -126,7 +127,7 @@ Both `--image` and `--mask` must be provided together.
 ```
 
 Index of a sample from the HuggingFace dataset (0 to dataset size − 1).  
-The dataset repo is read from `hf_dataset_repo` in the config file.  
+The dataset repo is read from `hf_dataset_repo` or `hf_blender_dataset_repo` in the config file.  
 The sample's prompt is used as the prompt unless `--prompt` is also given.
 
 ---
@@ -139,6 +140,14 @@ The sample's prompt is used as the prompt unless `--prompt` is also given.
 
 Path to a YAML configuration file.  
 Default: `configs/config.yaml`
+
+```bash
+--blender_path PATH_TO_BLENDER
+```
+
+Path to the Blender executable.
+If provided, it overrides the value in the config file.
+
 
 ```bash
 --prompt "TEXT PROMPT"
@@ -280,26 +289,29 @@ python -m fill_my_mirror \
 
 # 📦 Dataset
 
-The dataset used in this paper is available on Hugging Face:
+Two datasets are provided:
 
-**[OfekBassonResearch/Fill-My-Mirror](https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror)**
+### Real Images Dataset
 
-It contains 50 real-world mirror scenes with the following columns per sample:
+Contains 50 real-world mirror scenes with the following columns per sample:
 
 | Column | Description |
 |---|---|
-| `image` | Input image (mirror region visible) |
+| `image` | Input image (mirror region is black) |
 | `mask` | Binary mask of the mirror region |
 | `gt_image` | Ground-truth image (mirror filled) |
 | `prompt` | Text description of the scene |
 
-```python
-from datasets import load_dataset
+### Blender Synthetic Dataset
 
-ds = load_dataset("OfekBasson/fill-my-mirror")["test"]
-sample = ds[0]
-sample["image"].show()
-```
+Contains 15 rendered Blender scenes with mirrors, including ground-truth mirror masks, geometry, and manually assigned prompts.
+
+| Column | Description |
+|---|---|
+| `image` | Rendered scene image |
+| `mirror_mask` | Ground-truth binary mask of the mirror region |
+| `points` | 3D point cloud of the scene geometry (800×800×3, float32) |
+| `prompt` | Manually assigned text description of the scene |
 
 ---
 

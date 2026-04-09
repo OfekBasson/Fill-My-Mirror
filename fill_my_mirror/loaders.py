@@ -13,6 +13,7 @@ from PIL import Image
 class Sample:
     image_path: str
     mask_path: str
+    gt_image_path: str
     prompt: str | None
 
 
@@ -23,11 +24,9 @@ class RealImageSample(Sample):
 
 @dataclass
 class BlenderSample(Sample):
-    mirror_mask: np.ndarray  # (800, 800) bool
-    points: np.ndarray       # (800, 800, 3) float32
-    depth: np.ndarray        # (800, 800) float32
-    valid_mask: np.ndarray   # (800, 800) bool
-    intrinsics: np.ndarray   # (3, 3) float32
+    points: np.ndarray
+    depth: np.ndarray
+    intrinsics: np.ndarray
 
 
 class SampleLoader(ABC):
@@ -51,14 +50,19 @@ class RealImageSampleLoader(SampleLoader):
         tmp_dir = Path(tempfile.mkdtemp(prefix="fill_my_mirror_real_"))
 
         image_path = tmp_dir / "image.png"
-        mask_path = tmp_dir / "mask.png"
         sample["image"].save(image_path)
+        
+        mask_path = tmp_dir / "mask.png"
         sample["mask"].save(mask_path)
+
+        gt_image_path = tmp_dir / "gt_image.png"
+        sample["gt_image"].save(gt_image_path)
 
         prompt = sample.get("prompt") or None
         return RealImageSample(
             image_path=str(image_path),
             mask_path=str(mask_path),
+            gt_image_path=str(gt_image_path),
             prompt=prompt,
         )
 
@@ -76,18 +80,21 @@ class BlenderSampleLoader(SampleLoader):
         tmp_dir = Path(tempfile.mkdtemp(prefix="fill_my_mirror_blender_"))
 
         image_path = tmp_dir / "image.png"
-        mask_path = tmp_dir / "mask.png"
         Image.fromarray(np.array(sample["image"])).save(image_path)
-        mirror_mask_arr = (np.array(sample["mirror_mask"]) > 127)
+        
+        mask_path = tmp_dir / "mask.png"
+        mirror_mask_arr = (np.array(sample["mask"]) > 127)
         Image.fromarray((mirror_mask_arr.astype(np.uint8) * 255)).save(mask_path)
+        
+        gt_image_path = tmp_dir / "gt_image.png"
+        Image.fromarray(np.array(sample["gt_image"])).save(gt_image_path)
 
         return BlenderSample(
             image_path=str(image_path),
             mask_path=str(mask_path),
-            prompt=sample.get("prompt") or None,
-            mirror_mask=mirror_mask_arr,
+            gt_image_path=str(gt_image_path),
+            prompt=sample.get("prompt"),
             points=np.array(sample["points"], dtype=np.float32),
             depth=np.array(sample["depth"], dtype=np.float32),
-            valid_mask=np.array(sample["mask"], dtype=bool),
             intrinsics=np.array(sample["intrinsics"], dtype=np.float32),
         )
