@@ -291,7 +291,7 @@ python -m fill_my_mirror \
 
 Two datasets are provided:
 
-### Real Images Dataset
+### [Real Images Dataset](https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror)
 
 Contains 50 real-world mirror scenes with the following columns per sample:
 
@@ -302,7 +302,7 @@ Contains 50 real-world mirror scenes with the following columns per sample:
 | `gt_image` | Ground-truth image (mirror filled) |
 | `prompt` | Text description of the scene |
 
-### Blender Synthetic Dataset
+### [Blender Synthetic Dataset](https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror-Blender)
 
 Contains 15 rendered Blender scenes with mirrors, including ground-truth mirror masks, geometry, and manually assigned prompts.
 
