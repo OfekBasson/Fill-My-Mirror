@@ -200,23 +200,28 @@ Two datasets are provided:
 
 Contains 50 real-world mirror scenes with the following columns per sample:
 
-| Column | Description |
-|---|---|
-| `image` | Input image (mirror region is black) |
-| `mask` | Binary mask of the mirror region |
-| `gt_image` | Ground-truth image (mirror filled) |
-| `prompt` | Text description of the scene |
+| Column | Type | Description |
+|---|---|---|
+| `id` | int32 | Sample index |
+| `image` | image | Input image (mirror region is black) |
+| `mask` | image | Binary mask of the mirror region |
+| `gt_image` | image | Ground-truth image (mirror filled) |
+| `prompt` | string | Text description of the scene |
 
 ### [Blender Synthetic Dataset](https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror-Blender)
 
 Contains 15 rendered Blender scenes with mirrors, including ground-truth mirror masks, geometry, and manually assigned prompts.
 
-| Column | Description |
-|---|---|
-| `image` | Rendered scene image |
-| `mirror_mask` | Ground-truth binary mask of the mirror region |
-| `points` | 3D point cloud of the scene geometry (800×800×3, float32) |
-| `prompt` | Manually assigned text description of the scene |
+| Column | Type | Description |
+|---|---|---|
+| `id` | int32 | Sample index |
+| `image` | image | Rendered scene image |
+| `mask` | image | Ground-truth binary mask of the mirror region |
+| `gt_image` | image | Ground-truth image (mirror filled) |
+| `prompt` | string | Manually assigned text description of the scene |
+| `points` | float32 (800×800×3) | 3D point cloud of the scene geometry |
+| `depth` | float32 (800×800) | Depth map of the scene |
+| `intrinsics` | float32 (3×3) | Camera intrinsics matrix |
 
 ---
 
