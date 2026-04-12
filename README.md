@@ -102,134 +102,39 @@ python -m fill_my_mirror --hf-index 0
 
 ## Input (required — choose one)
 
-**Option A — local files:**
+**Option A — local files** (`--image` and `--mask` must be provided together):
 
-```bash
---image PATH_TO_IMAGE
-```
-
-Path to the input image.
-
-```bash
---mask PATH_TO_MASK
-```
-
-Path to the binary mask of the mirror region.
-
-Both `--image` and `--mask` must be provided together.
-
----
+| Argument | Description |
+|---|---|
+| `--image PATH_TO_IMAGE` | Path to the input image |
+| `--mask PATH_TO_MASK` | Path to the binary mask of the mirror region |
 
 **Option B — HuggingFace dataset sample:**
 
-```bash
---hf-index INDEX
-```
-
-Index of a sample from the HuggingFace dataset (0 to dataset size − 1).  
-The dataset repo is read from `hf_dataset_repo` or `hf_blender_dataset_repo` in the config file.  
-The sample's prompt is used as the prompt unless `--prompt` is also given.
-
----
+| Argument | Description |
+|---|---|
+| `--hf-index INDEX` | Index of a sample from the HuggingFace dataset (0 to dataset size − 1). The dataset repo is read from `hf_dataset_repo` or `hf_blender_dataset_repo` in the config file. The sample's prompt is used as the prompt unless `--prompt` is also given. |
 
 ## Optional arguments
 
-```bash
---config configs/config.yaml
-```
-
-Path to a YAML configuration file.  
-Default: `configs/config.yaml`
-
-```bash
---blender_path PATH_TO_BLENDER
-```
-
-Path to the Blender executable.
-If provided, it overrides the value in the config file.
-
-
-```bash
---prompt "TEXT PROMPT"
-```
-
-Text prompt for the diffusion model.  
-If provided, it overrides the config file value and any prompt from the HuggingFace sample.
-
-```bash
---prompt-2 "SECOND PROMPT"
-```
-
-Optional second text prompt.
-
-```bash
---output_path outputs/result.png
-```
-
-Path to save the final output image.  
-If provided, it overrides the value in the config file.
-
-```bash
---height 1024
---width 1024
-```
-
-Desired output resolution. If the requested resolution does not match the input image's aspect ratio, the width is automatically adjusted to fit and a warning is printed.
-
-```bash
---strength 1.0
-```
-
-Inpainting strength.
-
-```bash
---num-inference-steps 30
-```
-
-Number of diffusion inference steps.
-
-```bash
---guidance-scale 30.0
-```
-
-Guidance scale for the diffusion model.
-
-```bash
---num-images-per-prompt 1
-```
-
-Number of images to generate per prompt.
-
-```bash
---max-sequence-length 512
-```
-
-Maximum text sequence length.
-
-```bash
---seed 0
-```
-
-Random seed for reproducibility.
-
-```bash
---use-blender-data
-```
-
-Load a sample from the Blender HuggingFace dataset instead of the real-image dataset.  
-Requires `--hf-index`. When set, geometry is read directly from the dataset (no MoGe inference).
-
-```bash
---n 6.0
-```
-
-Power `n` for the alpha^n interpolation.
-
-```bash
---t-prime 750.0
-```
-
-First timestep threshold for mask interpolation.
+| Argument | Default | Description |
+|---|---|---|
+| `--config` | `configs/config.yaml` | Path to a YAML configuration file |
+| `--blender_path` | *(from config)* | Path to the Blender executable. Overrides the config file value. |
+| `--prompt` | *(from config or dataset)* | Text prompt for the diffusion model. Overrides the config file value and any prompt from the HuggingFace sample. |
+| `--prompt-2` | — | Optional second text prompt |
+| `--output_path` | *(from config)* | Path to save the final output image. Overrides the config file value. |
+| `--height` | `1024` | Desired output height |
+| `--width` | `1024` | Desired output width. Automatically adjusted to fit the input aspect ratio if needed. |
+| `--strength` | `1.0` | Inpainting strength |
+| `--num-inference-steps` | `30` | Number of diffusion inference steps |
+| `--guidance-scale` | `30.0` | Guidance scale for the diffusion model |
+| `--num-images-per-prompt` | `1` | Number of images to generate per prompt |
+| `--max-sequence-length` | `512` | Maximum text sequence length |
+| `--seed` | `0` | Random seed for reproducibility |
+| `--use-blender-data` | `False` | Load a sample from the Blender HuggingFace dataset. Requires `--hf-index`. When set, geometry is read directly from the dataset (no MoGe inference). |
+| `--n` | `6.0` | Power `n` for the alpha^n interpolation |
+| `--t-prime` | `750.0` | First timestep threshold for mask interpolation |
 
 ---
 
