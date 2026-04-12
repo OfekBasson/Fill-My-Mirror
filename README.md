@@ -10,11 +10,25 @@
 </div>
 <br>
 
+## Table of Contents
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Command Line Arguments](#command-line-arguments)
+- [Default Configuration](#default-configuration)
+- [Example Commands](#example-commands)
+- [Evaluation](#evaluation)
+- [Dataset](#dataset)
+- [Citation](#citation)
+
+---
+
 Official implementation of **Fill My Mirror**.
 
 This repository contains the code for generating consistent reflections in mirrors by combining **geometry estimation**, **projection**, and **dual-mask diffusion-based inpainting**.
 
 ---
+
+<a id="installation"></a>
 
 # 🛠️ Installation
 
@@ -58,9 +72,21 @@ pip install -e .
 
 ---
 
-## 4. Install Blender
+## 4. (Optional) Install MASt3R for evaluation
 
-This project requires **Blender** for scene rendering.
+Required only if you plan to run evaluation with the Reflection Consistency Score
+(RCS) masking on real images.
+
+```bash
+pip install -e third_party/MASt3R
+```
+
+---
+
+## 5. Install Blender
+
+This project requires **Blender** for scene rendering (and for evaluation on
+the Blender dataset).
 
 Run the provided installation script:
 
@@ -75,6 +101,8 @@ external/blender/
 ```
 
 ---
+
+<a id="quick-start"></a>
 
 # 🚀 Quick Start
 
@@ -97,6 +125,8 @@ python -m fill_my_mirror --hf-index 0
 ```
 
 ---
+
+<a id="command-line-arguments"></a>
 
 # ⚙️ Command Line Arguments
 
@@ -137,6 +167,7 @@ python -m fill_my_mirror --hf-index 0
 | `--t-prime` | `750.0` | First timestep threshold for mask interpolation |
 
 ---
+<a id="default-configuration"></a>
 
 # 📁 Default Configuration
 
@@ -154,9 +185,9 @@ hf_blender_dataset_repo: "OfekBassonResearch/Fill-My-Mirror-Blender"
 
 ---
 
+<a id="example-commands"></a>
 
 # 💡 Example Commands
-
 Basic example with local files:
 
 ```bash
@@ -191,6 +222,70 @@ python -m fill_my_mirror \
 ```
 
 ---
+<a id="evaluation"></a>
+
+# 📊 Evaluation
+
+Metrics are reported for two regions of the mirror and the full image:
+
+<table>
+<tr><th>Metric</th><th>Region</th><th>Description</th></tr>
+<tr><td><code>clip_similarity</code></td><td>Full image</td><td>CLIP ViT-B/32 image–text cosine similarity</td></tr>
+<tr><td><code>psnr_full_mirror</code></td><td rowspan="3">Full mirror mask</td><td>PSNR restricted to mirror pixels</td></tr>
+<tr><td><code>ssim_full_mirror</code></td><td>SSIM restricted to mirror pixels</td></tr>
+<tr><td><code>lpips_full_mirror</code></td><td>LPIPS restricted to mirror pixels</td></tr>
+<tr><td><code>psnr_constrained</code></td><td rowspan="3">Constrained pixels only</td><td>PSNR restricted to geometrically-determined pixels</td></tr>
+<tr><td><code>ssim_constrained</code></td><td>SSIM restricted to geometrically-determined pixels</td></tr>
+<tr><td><code>lpips_constrained</code></td><td>LPIPS restricted to geometrically-determined pixels</td></tr>
+</table>
+
+## Running Evaluation
+
+Evaluate a **single locally provided image** (no dataset required):
+
+```bash
+python scripts/evaluate.py local \
+  --generated outputs/result.png \
+  --gt data/real_images/gt_images/0.png \
+  --mask data/real_images/masks/0.png \
+  --save-dir eval/sample_0/ \
+  --prompt "A standing mirror reflects a bed with a dotted cover in a cozy bedroom."
+```
+
+Evaluate a **batch of results** against the real-images HuggingFace dataset:
+
+```bash
+python scripts/evaluate.py batch \
+  --results-dir outputs/my_run/ \
+  --dataset real \
+  --output-dir outputs/eval/real/
+```
+
+Evaluate against the **Blender dataset** (requires Blender):
+
+```bash
+python scripts/evaluate.py batch \
+  --results-dir outputs/blender_run/ \
+  --dataset blender \
+  --output-dir outputs/eval/blender/
+```
+
+## Constrained Pixels Mask
+
+The constrained mask isolates mirror pixels whose appearance is geometrically
+determined by the visible scene — enabling a more faithful evaluation of
+reflection correctness than metrics over the full mirror region.
+
+**Real images (HF dataset or local)** — computed via the **Reflection Consistency Score (RCS)**:
+MASt3R finds dense correspondences between the scene view and a flipped mirror
+view; matched mirror pixels are dilated and intersected with the mirror mask.
+
+**Blender dataset** — derived from **ground-truth 3D geometry**: the projection
+pipeline is run with GT point cloud and intrinsics; pixels covered by the
+projection are the constrained region.
+
+---
+<a id="dataset"></a>
 
 # 📦 Dataset
 
@@ -224,6 +319,7 @@ Contains 15 rendered Blender scenes with mirrors, including ground-truth mirror 
 | `intrinsics` | float32 (3×3) | Camera intrinsics matrix |
 
 ---
+<a id="citation"></a>
 
 # 📝 Citation
 

@@ -1,3 +1,6 @@
 [submodule "third_party/MoGe"]
 	path = third_party/MoGe
 	url = https://github.com/microsoft/MoGe.git
+[submodule "third_party/MASt3R"]
+	path = third_party/MASt3R
+	url = https://github.com/naver/mast3r

@@ -14,3 +14,7 @@ PyYAML==6.0.3
 datasets==4.8.4
 huggingface_hub==1.7.1
 git+https://github.com/EasternJournalist/utils3d.git@3913c65d81e05e47b9f367250cf8c0f7462a0900
+scikit-image>=0.21.0
+lpips>=0.1.4
+git+https://github.com/openai/CLIP.git
+pandas>=2.0.0
