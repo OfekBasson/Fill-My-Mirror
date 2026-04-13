@@ -97,7 +97,7 @@ def compute_rcs_mask(
     device : str, optional
         Torch device (e.g. ``"cuda"`` or ``"cpu"``). Defaults to CUDA if available.
     dilation_radius : int
-        Half-size of the square dilation kernel (kernel = ``(2*r+1) × (2*r+1)``),
+        Radius of the circular dilation kernel (kernel size = ``(2*r+1) × (2*r+1)``),
         applied with ``iterations=2``. Set to 0 to disable dilation.
 
     Returns
@@ -267,8 +267,7 @@ def _dilate_and_intersect(
     """
     Dilate the correspondence mask and intersect with the mirror mask.
 
-    Uses a square kernel with ``iterations=2``, matching ``build_inpainting_mask``
-    in the projection pipeline.
+    Uses a circular kernel (``cv2.MORPH_ELLIPSE``) with ``iterations=2``.
 
     Parameters
     ----------
@@ -277,7 +276,7 @@ def _dilate_and_intersect(
     mirror_mask_arr : np.ndarray, bool (H, W)
         Mirror region mask.
     dilation_radius : int
-        Half-size of the square kernel (kernel = ``(2*r+1) × (2*r+1)``).
+        Radius of the circular kernel (kernel size = ``(2*r+1) × (2*r+1)``).
         Set to 0 to disable dilation.
 
     Returns
@@ -286,7 +285,7 @@ def _dilate_and_intersect(
     """
     if dilation_radius > 0:
         kernel_size = 2 * dilation_radius + 1
-        kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
         mask_uint8 = correspondence_mask.astype(np.uint8) * 255
         dilated_uint8 = cv2.dilate(mask_uint8, kernel, iterations=2)
         dilated = dilated_uint8 > 127
