@@ -77,8 +77,11 @@ pip install -e .
 Required only if you plan to run evaluation with the Reflection Consistency Score
 (RCS) masking on real images.
 
+MASt3R is not a pip-installable package — install its dependencies directly:
+
 ```bash
-pip install -e third_party/MASt3R
+pip install -r third_party/MASt3R/requirements.txt
+pip install -r third_party/MASt3R/dust3r/requirements.txt
 ```
 
 ---

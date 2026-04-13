@@ -1,0 +1,2 @@
+name,psnr_full_mirror,ssim_full_mirror,lpips_full_mirror,psnr_constrained,ssim_constrained,lpips_constrained,clip_similarity
+result,11.819361945148126,0.36446747183799744,0.0937173068523407,19.155597699284716,0.49358561635017395,0.001507154549472034,0.28759765625

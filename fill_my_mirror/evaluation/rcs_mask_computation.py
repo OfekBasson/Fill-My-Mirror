@@ -5,14 +5,16 @@ Identifies mirror pixels that are geometrically constrained by the visible scene
 by finding dense pixel correspondences between the scene view and a horizontally
 flipped mirror view (paper Section 4.3).
 
-Requires MASt3R to be installed:
-    pip install -e third_party/MASt3R
+Requires MASt3R to be set up (see third_party/MASt3R/README.md):
+    pip install -r third_party/MASt3R/requirements.txt
+    pip install -r third_party/MASt3R/dust3r/requirements.txt
 """
 
 from __future__ import annotations
 
 import logging
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -23,21 +25,40 @@ from scipy.ndimage import binary_dilation
 
 logger = logging.getLogger(__name__)
 
-try:
-    from mast3r.model import AsymmetricMASt3R
-    from mast3r.fast_nn import fast_reciprocal_NNs
-    from dust3r.inference import inference
-    from dust3r.utils.image import load_images
-    _MAST3R_AVAILABLE = True
-except ImportError:
-    _MAST3R_AVAILABLE = False
-    logger.warning(
-        "MASt3R is not installed. RCS mask computation will be unavailable. "
-        "Install with: pip install -e third_party/MASt3R"
-    )
+# MASt3R imports are deferred until first use to avoid polluting sys.path at
+# module load time (dust3r adds its croco/ dir to sys.path, which would shadow
+# the HuggingFace `datasets` package otherwise).
+_MAST3R_AVAILABLE: Optional[bool] = None  # None = not yet attempted
+
+
+def _ensure_mast3r() -> bool:
+    """Lazily inject MASt3R/dust3r into sys.path and attempt to import them."""
+    global _MAST3R_AVAILABLE
+    if _MAST3R_AVAILABLE is not None:
+        return _MAST3R_AVAILABLE
+
+    mast3r_root = Path(__file__).resolve().parents[2] / "third_party" / "MASt3R"
+    for p in [str(mast3r_root), str(mast3r_root / "dust3r")]:
+        if p not in sys.path:
+            sys.path.insert(0, p)
+
+    try:
+        import mast3r.model  # noqa: F401
+        import mast3r.fast_nn  # noqa: F401
+        import dust3r.inference  # noqa: F401
+        import dust3r.utils.image  # noqa: F401
+        _MAST3R_AVAILABLE = True
+    except ImportError:
+        _MAST3R_AVAILABLE = False
+        logger.warning(
+            "MASt3R dependencies not found. RCS mask computation will be unavailable. "
+            "Install with: pip install -r third_party/MASt3R/requirements.txt "
+            "-r third_party/MASt3R/dust3r/requirements.txt"
+        )
+    return _MAST3R_AVAILABLE
 
 # Module-level model cache: avoids reloading on every call in a batch run.
-_MODEL_CACHE: dict[tuple[str, str], "AsymmetricMASt3R"] = {}
+_MODEL_CACHE: dict[tuple[str, str], object] = {}
 
 _MAST3R_IMG_SIZE = 512
 
@@ -49,7 +70,7 @@ def compute_rcs_mask(
     mask_stem: str,
     mast3r_model_name: str = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric",
     device: Optional[str] = None,
-    dilation_radius: int = 5,
+    dilation_radius: int = 15,
 ) -> Path:
     """
     Compute the Reflection Consistency Score mask and save it to disk.
@@ -89,10 +110,11 @@ def compute_rcs_mask(
     RuntimeError
         If MASt3R is not installed.
     """
-    if not _MAST3R_AVAILABLE:
+    if not _ensure_mast3r():
         raise RuntimeError(
-            "MASt3R is required for RCS mask computation but is not installed. "
-            "Run: pip install -e third_party/MASt3R"
+            "MASt3R is required for RCS mask computation but its dependencies are missing. "
+            "Run: pip install -r third_party/MASt3R/requirements.txt "
+            "-r third_party/MASt3R/dust3r/requirements.txt"
         )
 
     import torch
@@ -170,8 +192,9 @@ def _build_views(
     return scene, mirror
 
 
-def _load_model(mast3r_model_name: str, device: str) -> "AsymmetricMASt3R":
+def _load_model(mast3r_model_name: str, device: str) -> object:
     """Load (or retrieve cached) MASt3R model."""
+    from mast3r.model import AsymmetricMASt3R
     key = (mast3r_model_name, device)
     if key not in _MODEL_CACHE:
         logger.info("Loading MASt3R model '%s' on %s ...", mast3r_model_name, device)
@@ -203,6 +226,10 @@ def _run_mast3r_correspondences(
         mirror_path = str(Path(tmp_dir) / "mirror.png")
         Image.fromarray(scene_arr).save(scene_path)
         Image.fromarray(mirror_arr).save(mirror_path)
+
+        from dust3r.inference import inference
+        from dust3r.utils.image import load_images
+        from mast3r.fast_nn import fast_reciprocal_NNs
 
         images = load_images([scene_path, mirror_path], size=_MAST3R_IMG_SIZE, square_ok=True, verbose=False)
         model = _load_model(mast3r_model_name, device)
