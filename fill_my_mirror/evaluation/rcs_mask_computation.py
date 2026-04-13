@@ -70,7 +70,7 @@ def compute_rcs_mask(
     mask_stem: str,
     mast3r_model_name: str = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric",
     device: Optional[str] = None,
-    dilation_radius: int = 15,
+    dilation_radius: int = 10,
 ) -> Path:
     """
     Compute the Reflection Consistency Score mask and save it to disk.
