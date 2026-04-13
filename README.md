@@ -16,6 +16,7 @@
 - [Command Line Arguments](#command-line-arguments)
 - [Default Configuration](#default-configuration)
 - [Example Commands](#example-commands)
+- [Batch Inference](#batch-inference)
 - [Evaluation](#evaluation)
 - [Dataset](#dataset)
 - [Citation](#citation)
@@ -223,6 +224,42 @@ python -m fill_my_mirror \
   --mask examples/input/example_mask.png \
   --prompt "Generate a realistic mirror reflection consistent with the scene geometry and lighting."
 ```
+
+---
+<a id="batch-inference"></a>
+
+# 🔁 Batch Inference
+
+Run the pipeline on every sample in the HuggingFace dataset with `scripts/run_batch.py`.
+Results are saved as `{output_dir}/seed_{seed}/{index}.png`, ready for use with the batch evaluation command.
+
+Run on the **real-images dataset**:
+
+```bash
+python scripts/run_batch.py --dataset real --output-dir outputs/batch_real/
+```
+
+Run on the **Blender dataset**:
+
+```bash
+python scripts/run_batch.py --dataset blender --output-dir outputs/batch_blender/
+```
+
+Process a **subset** of samples (e.g. indices 0–9):
+
+```bash
+python scripts/run_batch.py --dataset real --output-dir outputs/batch_real/ \
+  --start-index 0 --end-index 10
+```
+
+**Resume** an interrupted run (skip already-generated images):
+
+```bash
+python scripts/run_batch.py --dataset real --output-dir outputs/batch_real/ \
+  --skip-existing
+```
+
+All standard pipeline arguments (`--seed`, `--prompt`, `--strength`, `--num-inference-steps`, etc.) are accepted and forwarded to the pipeline unchanged.
 
 ---
 <a id="evaluation"></a>

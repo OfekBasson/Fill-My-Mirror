@@ -13,7 +13,7 @@ trimesh==4.11.3
 PyYAML==6.0.3
 datasets==4.8.4
 huggingface_hub==1.7.1
-git+https://github.com/EasternJournalist/utils3d.git@3913c65d81e05e47b9f367250cf8c0f7462a0900
+git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183
 scikit-image>=0.21.0
 lpips>=0.1.4
 git+https://github.com/openai/CLIP.git
