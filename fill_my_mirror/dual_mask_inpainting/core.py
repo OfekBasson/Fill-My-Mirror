@@ -8,6 +8,22 @@ from diffusers.utils import load_image
 from .pipeline import DualMaskInterpolatedFluxFillPipeline
 
 
+def load_inpainting_pipeline(
+    model_name: str = "black-forest-labs/FLUX.1-Fill-dev",
+    torch_dtype: torch.dtype = torch.bfloat16,
+    device: str = "cuda",
+) -> DualMaskInterpolatedFluxFillPipeline:
+    """Load and return the inpainting pipeline.
+
+    Call this once and pass the result to ``run_dual_mask_inpainting`` to avoid
+    reloading the model on every iteration.
+    """
+    return DualMaskInterpolatedFluxFillPipeline.from_pretrained(
+        model_name,
+        torch_dtype=torch_dtype,
+    ).to(device)
+
+
 def run_dual_mask_inpainting(
     prompt: str,
     projected_image_path: str | Path,
@@ -28,6 +44,7 @@ def run_dual_mask_inpainting(
     t_prime: float = 750.0,
     torch_dtype: torch.dtype = torch.bfloat16,
     device: str = "cuda",
+    pipe: DualMaskInterpolatedFluxFillPipeline | None = None,
 ):
     projected_image_path = Path(projected_image_path)
     geometry_constraint_mask_path = Path(geometry_constraint_mask_path)
@@ -47,10 +64,12 @@ def run_dual_mask_inpainting(
     if image.size != generative_refinement_mask.size:
         generative_refinement_mask = generative_refinement_mask.resize(image.size)
 
-    pipe = DualMaskInterpolatedFluxFillPipeline.from_pretrained(
-        model_name,
-        torch_dtype=torch_dtype,
-    ).to(device)
+    if pipe is None:
+        pipe = load_inpainting_pipeline(
+            model_name=model_name,
+            torch_dtype=torch_dtype,
+            device=device,
+        )
 
     generator = torch.Generator("cuda").manual_seed(seed)
     

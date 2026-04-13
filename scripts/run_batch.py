@@ -40,7 +40,7 @@ import yaml
 
 from fill_my_mirror.geometry import estimate_geometry
 from fill_my_mirror.projection import run_projection
-from fill_my_mirror.dual_mask_inpainting import run_dual_mask_inpainting
+from fill_my_mirror.dual_mask_inpainting import load_inpainting_pipeline, run_dual_mask_inpainting
 from fill_my_mirror.loaders import RealImageSampleLoader, BlenderSampleLoader
 from fill_my_mirror.utils import check_and_fix_aspect_ratio
 
@@ -147,6 +147,10 @@ def main() -> None:
     print(f"Output  : {seed_dir}")
     print()
 
+    print("Loading inpainting pipeline ...")
+    pipe = load_inpainting_pipeline(model_name=config["inpainting_model_name"])
+    print("Pipeline loaded.\n")
+
     for i, index in enumerate(range(start, end)):
         out_path = seed_dir / f"{index}.png"
 
@@ -187,6 +191,7 @@ def main() -> None:
             width=width,
             n=args.n,
             t_prime=args.t_prime,
+            pipe=pipe,
         )
 
         print(f"[{i + 1}/{total}] index {index} — saved to {out_path}")
