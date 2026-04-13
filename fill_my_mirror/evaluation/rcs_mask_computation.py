@@ -19,9 +19,9 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+import cv2
 import numpy as np
 from PIL import Image
-from scipy.ndimage import binary_dilation
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +97,8 @@ def compute_rcs_mask(
     device : str, optional
         Torch device (e.g. ``"cuda"`` or ``"cpu"``). Defaults to CUDA if available.
     dilation_radius : int
-        Structuring-element radius for dilating the correspondence mask before
-        intersection. Set to 0 to disable dilation.
+        Half-size of the square dilation kernel (kernel = ``(2*r+1) × (2*r+1)``),
+        applied with ``iterations=2``. Set to 0 to disable dilation.
 
     Returns
     -------
@@ -259,13 +259,6 @@ def _run_mast3r_correspondences(
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def _make_disk_structure(radius: int) -> np.ndarray:
-    """Create a 2-D boolean disk structuring element of the given radius."""
-    diameter = 2 * radius + 1
-    y, x = np.ogrid[-radius : radius + 1, -radius : radius + 1]
-    return x ** 2 + y ** 2 <= radius ** 2
-
-
 def _dilate_and_intersect(
     correspondence_mask: np.ndarray,
     mirror_mask_arr: np.ndarray,
@@ -274,6 +267,9 @@ def _dilate_and_intersect(
     """
     Dilate the correspondence mask and intersect with the mirror mask.
 
+    Uses a square kernel with ``iterations=2``, matching ``build_inpainting_mask``
+    in the projection pipeline.
+
     Parameters
     ----------
     correspondence_mask : np.ndarray, bool (H, W)
@@ -281,15 +277,19 @@ def _dilate_and_intersect(
     mirror_mask_arr : np.ndarray, bool (H, W)
         Mirror region mask.
     dilation_radius : int
-        Disk radius for dilation. 0 means no dilation.
+        Half-size of the square kernel (kernel = ``(2*r+1) × (2*r+1)``).
+        Set to 0 to disable dilation.
 
     Returns
     -------
     np.ndarray, bool (H, W)
     """
     if dilation_radius > 0:
-        struct = _make_disk_structure(dilation_radius)
-        dilated = binary_dilation(correspondence_mask, structure=struct)
+        kernel_size = 2 * dilation_radius + 1
+        kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+        mask_uint8 = correspondence_mask.astype(np.uint8) * 255
+        dilated_uint8 = cv2.dilate(mask_uint8, kernel, iterations=2)
+        dilated = dilated_uint8 > 127
     else:
         dilated = correspondence_mask.copy()
     return dilated & mirror_mask_arr
