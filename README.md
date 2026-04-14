@@ -290,7 +290,7 @@ python scripts/evaluate.py local \
 | `--rcs-dilation` | `5` | Dilation radius for the RCS mask |
 | `--config` | `configs/config.yaml` | Path to a YAML configuration file |
 
-Evaluate a **batch of results** against the real-images HuggingFace dataset:
+Evaluate a **batch of results** against the **real-images HuggingFace dataset**:
 
 ```bash
 python scripts/evaluate.py batch \
@@ -299,7 +299,7 @@ python scripts/evaluate.py batch \
   --output-dir outputs/eval/real/
 ```
 
-Evaluate against the **Blender dataset** (requires Blender):
+Evaluate against the **Blender dataset**:
 
 ```bash
 python scripts/evaluate.py batch \
