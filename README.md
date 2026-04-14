@@ -14,11 +14,11 @@
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Command Line Arguments](#command-line-arguments)
-- [Default Configuration](#default-configuration)
 - [Example Commands](#example-commands)
 - [Batch Inference](#batch-inference)
 - [Evaluation](#evaluation)
 - [Dataset](#dataset)
+- [Default Configuration](#default-configuration)
 - [Citation](#citation)
 
 ---
@@ -73,21 +73,7 @@ pip install -e .
 
 ---
 
-## 4. (Optional) Install MASt3R for evaluation
-
-Required only if you plan to run evaluation with the Reflection Consistency Score
-(RCS) masking on real images.
-
-MASt3R is not a pip-installable package — install its dependencies directly:
-
-```bash
-pip install -r third_party/MASt3R/requirements.txt
-pip install -r third_party/MASt3R/dust3r/requirements.txt
-```
-
----
-
-## 5. Install Blender
+## 4. Install Blender
 
 This project requires **Blender** for scene rendering (and for evaluation on
 the Blender dataset).
@@ -103,6 +89,20 @@ This downloads and extracts Blender to:
 ```
 external/blender/
 ```
+---
+
+## 5. (Optional) Install MASt3R for evaluation
+
+Required only if you plan to run evaluation with the Reflection Consistency Score
+(RCS) masking on real images.
+
+MASt3R is not a pip-installable package — install its dependencies directly:
+
+```bash
+pip install -r third_party/MASt3R/requirements.txt
+pip install -r third_party/MASt3R/dust3r/requirements.txt
+```
+
 
 ---
 
@@ -171,23 +171,6 @@ python -m fill_my_mirror --hf-index 0
 | `--t-prime` | `750.0` | First timestep threshold for mask interpolation |
 
 ---
-<a id="default-configuration"></a>
-
-# 📁 Default Configuration
-
-The default configuration is stored in `configs/config.yaml`:
-
-```yaml
-prompt: "Complete the mirror reflection realistically and consistently with the scene geometry."
-default_output_path: "outputs/result.png"
-blender_path: "external/blender/blender-4.4.3-linux-x64/blender"
-geometry_model_name: "Ruicheng/moge-2-vitl-normal"
-inpainting_model_name: "black-forest-labs/FLUX.1-Fill-dev"
-hf_dataset_repo: "OfekBassonResearch/Fill-My-Mirror"
-hf_blender_dataset_repo: "OfekBassonResearch/Fill-My-Mirror-Blender"
-```
-
----
 
 <a id="example-commands"></a>
 
@@ -226,6 +209,7 @@ python -m fill_my_mirror \
 ```
 
 ---
+---
 <a id="batch-inference"></a>
 
 # 🔁 Batch Inference
@@ -233,33 +217,30 @@ python -m fill_my_mirror \
 Run the pipeline on every sample in the HuggingFace dataset with `scripts/run_batch.py`.
 Results are saved as `{output_dir}/seed_{seed}/{index}.png`, ready for use with the batch evaluation command.
 
-Run on the **real-images dataset**:
-
 ```bash
 python scripts/run_batch.py --dataset real --output-dir outputs/batch_real/
 ```
 
-Run on the **Blender dataset**:
+## Arguments
 
-```bash
-python scripts/run_batch.py --dataset blender --output-dir outputs/batch_blender/
-```
+**Required:**
 
-Process a **subset** of samples (e.g. indices 0–9):
+| Argument | Choices | Description |
+|---|---|---|
+| `--dataset` | `real`, `blender` | Which HuggingFace dataset to use |
+| `--output-dir` | | Root output directory. Results saved to `{output_dir}/seed_{seed}/{index}.png` |
 
-```bash
-python scripts/run_batch.py --dataset real --output-dir outputs/batch_real/ \
-  --start-index 0 --end-index 10
-```
+**Optional:**
 
-**Resume** an interrupted run (skip already-generated images):
+| Argument | Default | Description |
+|---|---|---|
+| `--config` | `configs/config.yaml` | Path to a YAML configuration file |
+| `--start-index` | `0` | First dataset index to process (inclusive) |
+| `--end-index` | *(full dataset)* | Last dataset index to process (exclusive) |
+| `--skip-existing` | `False` | Skip indices whose output file already exists (useful for resuming) |
+| `--blender_path` | *(from config)* | Path to the Blender executable. Overrides the config file value |
 
-```bash
-python scripts/run_batch.py --dataset real --output-dir outputs/batch_real/ \
-  --skip-existing
-```
-
-All standard pipeline arguments (`--seed`, `--prompt`, `--strength`, `--num-inference-steps`, etc.) are accepted and forwarded to the pipeline unchanged.
+All standard pipeline arguments (`--prompt`, `--prompt-2`, `--strength`, `--num-inference-steps`, `--guidance-scale`, `--seed`, `--n`, `--t-prime`, etc.) are accepted and forwarded to the pipeline unchanged — see [Command Line Arguments](#command-line-arguments) for their descriptions and defaults.
 
 ---
 <a id="evaluation"></a>
@@ -292,6 +273,23 @@ python scripts/evaluate.py local \
   --prompt "A standing mirror reflects a bed with a dotted cover in a cozy bedroom."
 ```
 
+**`local` arguments — required:**
+
+| Argument | Description |
+|---|---|
+| `--generated` | Path to the generated/inpainted image |
+| `--gt` | Path to the ground-truth image |
+| `--mask` | Path to the binary mirror mask |
+| `--save-dir` | Directory to save the metrics CSV |
+
+**`local` arguments — optional:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--prompt` | — | Text prompt for CLIP similarity |
+| `--rcs-dilation` | `5` | Dilation radius for the RCS mask |
+| `--config` | `configs/config.yaml` | Path to a YAML configuration file |
+
 Evaluate a **batch of results** against the real-images HuggingFace dataset:
 
 ```bash
@@ -309,6 +307,23 @@ python scripts/evaluate.py batch \
   --dataset blender \
   --output-dir outputs/eval/blender/
 ```
+
+***`batch` arguments — required:**
+
+| Argument | Choices | Description |
+|---|---|---|
+| `--results-dir` | | Directory containing result PNGs named `{index}.png` |
+| `--dataset` | `real`, `blender` | Which HuggingFace dataset to load ground truth from |
+| `--output-dir` | | Directory to save per-sample and aggregate CSVs |
+
+**`batch` arguments — optional:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--prompt` | — | Override CLIP prompt for all samples |
+| `--rcs-dilation` | `5` | Dilation radius for the RCS mask |
+| `--blender-path` | *(from config)* | Path to the Blender executable (needed for `--dataset blender`) |
+| `--config` | `configs/config.yaml` | Path to a YAML configuration file |
 
 ## Constrained Pixels Mask
 
@@ -357,6 +372,23 @@ Contains 15 rendered Blender scenes with mirrors, including ground-truth mirror 
 | `points` | float32 (800×800×3) | 3D point cloud of the scene geometry |
 | `depth` | float32 (800×800) | Depth map of the scene |
 | `intrinsics` | float32 (3×3) | Camera intrinsics matrix |
+
+---
+<a id="default-configuration"></a>
+
+# 📁 Default Configuration
+
+The default configuration is stored in `configs/config.yaml`:
+
+```yaml
+prompt: "Complete the mirror reflection realistically and consistently with the scene geometry."
+default_output_path: "outputs/result.png"
+blender_path: "external/blender/blender-4.4.3-linux-x64/blender"
+geometry_model_name: "Ruicheng/moge-2-vitl-normal"
+inpainting_model_name: "black-forest-labs/FLUX.1-Fill-dev"
+hf_dataset_repo: "OfekBassonResearch/Fill-My-Mirror"
+hf_blender_dataset_repo: "OfekBassonResearch/Fill-My-Mirror-Blender"
+```
 
 ---
 <a id="citation"></a>
