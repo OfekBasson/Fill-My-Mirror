@@ -105,7 +105,7 @@ def main() -> None:
     parser.add_argument("--n", type=float, default=6.0)
     parser.add_argument("--t-prime", type=float, default=750.0)
     parser.add_argument(
-        "--blender_path", type=str, default=None,
+        "--blender-path", type=str, default=None,
         help="Path to the Blender executable. Overrides the config file value.",
     )
 

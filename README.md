@@ -116,7 +116,7 @@ scripts/run_example.sh
 Or run directly with your own image and mask:
 
 ```bash
-python -m fill_my_mirror --image PATH_TO_IMAGE --mask PATH_TO_MASK
+python -m fill_my_mirror --image /path/to/image.png --mask /path/to/mask.png
 ```
 
 Or use a sample from the HuggingFace dataset by index:
@@ -209,7 +209,6 @@ python -m fill_my_mirror \
 ```
 
 ---
----
 <a id="batch-inference"></a>
 
 # 🔁 Batch Inference
@@ -238,7 +237,7 @@ python scripts/run_batch.py --dataset real --output-dir outputs/batch_real/
 | `--start-index` | `0` | First dataset index to process (inclusive) |
 | `--end-index` | *(full dataset)* | Last dataset index to process (exclusive) |
 | `--skip-existing` | `False` | Skip indices whose output file already exists (useful for resuming) |
-| `--blender_path` | *(from config)* | Path to the Blender executable. Overrides the config file value |
+| `--blender-path` | *(from config)* | Path to the Blender executable. Overrides the config file value |
 
 All standard pipeline arguments (`--prompt`, `--prompt-2`, `--strength`, `--num-inference-steps`, `--guidance-scale`, `--seed`, `--n`, `--t-prime`, etc.) are accepted and forwarded to the pipeline unchanged — see [Command Line Arguments](#command-line-arguments) for their descriptions and defaults.
 
@@ -266,9 +265,9 @@ Evaluate a **single locally provided image** (no dataset required):
 
 ```bash
 python scripts/evaluate.py local \
-  --generated outputs/result.png \
-  --gt data/real_images/gt_images/0.png \
-  --mask data/real_images/masks/0.png \
+  --generated /path/to/generated.png \
+  --gt /path/to/gt_image.png \
+  --mask /path/to/mask.png \
   --save-dir eval/sample_0/ \
   --prompt "A standing mirror reflects a bed with a dotted cover in a cozy bedroom."
 ```
@@ -308,7 +307,7 @@ python scripts/evaluate.py batch \
   --output-dir outputs/eval/blender/
 ```
 
-***`batch` arguments — required:**
+**`batch` arguments — required:**
 
 | Argument | Choices | Description |
 |---|---|---|
@@ -388,6 +387,7 @@ geometry_model_name: "Ruicheng/moge-2-vitl-normal"
 inpainting_model_name: "black-forest-labs/FLUX.1-Fill-dev"
 hf_dataset_repo: "OfekBassonResearch/Fill-My-Mirror"
 hf_blender_dataset_repo: "OfekBassonResearch/Fill-My-Mirror-Blender"
+mast3r_model_name: "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 ```
 
 ---
