@@ -7,6 +7,8 @@
 </div>
 <br>
 
+![Teaser](assets/teaser.jpg)
+
 ## Table of Contents
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -137,8 +139,8 @@ python -m fill_my_mirror --hf-index 0
 
 | Argument | Description |
 |---|---|
-| `--image PATH_TO_IMAGE` | Path to the input image |
-| `--mask PATH_TO_MASK` | Path to the binary mask of the mirror region |
+| `--image /path/to/image.png` | Path to the input image |
+| `--mask /path/to/mask.png` | Path to the binary mask of the mirror region |
 
 **Option B — HuggingFace dataset sample:**
 
