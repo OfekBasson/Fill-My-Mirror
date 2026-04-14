@@ -1,7 +1,4 @@
 # 🪞 Fill My Mirror
-<!-- TODO: Implement run_example.sh -->
-<!-- Add demo -->
-<!-- Add the Blender images Dataset as glb files -->
 <div align="center">
   <a href="https://google.com"><img src='https://img.shields.io/badge/arXiv-Paper-red?logo=arxiv&logoColor=white' alt='arXiv'></a>
   <a href='TODO'><img src='https://img.shields.io/badge/Project_Page-Website-green?logo=googlechrome&logoColor=white' alt='Project Page'></a>
@@ -400,7 +397,7 @@ If you use this code in your research, please cite:
 ```bibtex
 @article{fill_my_mirror,
   title={Fill My Mirror},
-  author={...},
+  author={Basson, Ofek and Vainer, Shimon and Hel-Or, Yacov and Fried, Ohad},
   year={2025}
 }
 ```
