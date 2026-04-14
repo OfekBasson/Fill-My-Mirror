@@ -172,16 +172,19 @@ python -m fill_my_mirror --hf-index 0
 <a id="example-commands"></a>
 
 # 💡 Example Commands
+
+> The file paths below are illustrative — replace them with the actual paths to your image and mask files.
+
 Basic example with local files:
 
 ```bash
 python -m fill_my_mirror \
-  --image data/real_images/images/0.png \
-  --mask data/real_images/masks/0.png \
+  --image /path/to/image.png \
+  --mask /path/to/mask.png \
   --prompt "A standing mirror reflects a bed with a dotted cover in a cozy bedroom."
 ```
 
-Example using a HuggingFace dataset sample:
+Example using a HuggingFace dataset sample (no local files needed):
 
 ```bash
 python -m fill_my_mirror --hf-index 5
@@ -191,17 +194,17 @@ Example with a custom output path:
 
 ```bash
 python -m fill_my_mirror \
-  --image examples/input/example.jpg \
-  --mask examples/input/example_mask.png \
-  --output_path outputs/example_result.png
+  --image /path/to/image.png \
+  --mask /path/to/mask.png \
+  --output_path outputs/result.png
 ```
 
 Example with a custom prompt:
 
 ```bash
 python -m fill_my_mirror \
-  --image examples/input/example.jpg \
-  --mask examples/input/example_mask.png \
+  --image /path/to/image.png \
+  --mask /path/to/mask.png \
   --prompt "Generate a realistic mirror reflection consistent with the scene geometry and lighting."
 ```
 
