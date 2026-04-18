@@ -403,6 +403,6 @@ If you use this code in your research, please cite:
 @article{fill_my_mirror,
   title={Fill My Mirror},
   author={Basson, Ofek and Vainer, Shimon and Hel-Or, Yacov and Fried, Ohad},
-  year={2025}
+  year={2026}
 }
 ```

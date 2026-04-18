@@ -13,13 +13,15 @@ from PIL import Image
 class Sample:
     image_path: str
     mask_path: str
-    gt_image_path: str
     prompt: str | None
+    gt_image_path: str | None = None
 
 
 @dataclass
 class RealImageSample(Sample):
-    pass
+    def __post_init__(self):
+        if self.gt_image_path is None:
+            self.gt_image_path = self.image_path
 
 
 @dataclass
