@@ -26,9 +26,9 @@ class RealImageSample(Sample):
 
 @dataclass
 class BlenderSample(Sample):
-    points: np.ndarray
-    depth: np.ndarray
-    intrinsics: np.ndarray
+    points: np.ndarray = None
+    depth: np.ndarray = None
+    intrinsics: np.ndarray = None
 
 
 class SampleLoader(ABC):
