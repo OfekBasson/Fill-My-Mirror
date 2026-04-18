@@ -67,12 +67,12 @@ def compute_gt_geometry_constraint_mask(
     projection_output = run_projection(
         geometry_output=geometry_output,
         image_path=sample.image_path,
-        mirror_mask_path=sample.mirror_mask_path,
+        mirror_mask_path=sample.mask_path,
         blender_path=blender_path,
     )
 
     mirror_mask = np.asarray(
-        Image.open(sample.mirror_mask_path).convert("L"), dtype=np.uint8
+        Image.open(sample.mask_path).convert("L"), dtype=np.uint8
     ) > 127
     inpainting_mask = np.asarray(
         Image.open(projection_output.geometry_constraint_mask_path).convert("L"),
