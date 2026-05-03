@@ -1,5 +1,8 @@
 from .core import (
-    GeometryOutput,
+    MirrorEntry,
+    GeometryOutputBase,
+    GeometryOutputSingleMirror,
+    GeometryOutputMultipleMirrors,
     GeometryProcessorBase,
     MoGeGeometryProcessor,
     BlenderGeometryProcessor,

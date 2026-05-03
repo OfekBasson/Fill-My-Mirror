@@ -2,7 +2,8 @@ import argparse
 from pathlib import Path
 import yaml
 from fill_my_mirror.geometry import estimate_geometry
-from fill_my_mirror.projection import run_projection
+from fill_my_mirror.projection import run_projection_single_mirror, run_projection_multiple_mirrors
+from fill_my_mirror.geometry import GeometryOutputMultipleMirrors
 from fill_my_mirror.dual_mask_inpainting import run_dual_mask_inpainting
 from fill_my_mirror.loaders import SampleLoader, RealImageSampleLoader, BlenderSampleLoader, RealImageSample
 from fill_my_mirror.utils import check_and_fix_aspect_ratio
@@ -34,7 +35,14 @@ def main():
         "--mask",
         type=str,
         default=None,
-        help="Path to the mirror mask. Required unless --hf-index is provided."
+        help="Path to the mirror mask. Required unless --hf-index or --masks is provided."
+    )
+    parser.add_argument(
+        "--masks",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Paths to mirror masks (one per mirror). Mutually exclusive with --mask."
     )
     parser.add_argument(
         "--hf-index",
@@ -137,16 +145,20 @@ def main():
 
     using_blender_hf = args.use_blender_data
     using_real_hf = args.hf_index is not None and not using_blender_hf
-    using_files = args.image is not None or args.mask is not None
+    using_files = args.image is not None or args.mask is not None or args.masks is not None
 
     if using_blender_hf and args.hf_index is None:
         parser.error("--use-blender-data requires --hf-index.")
     if (using_real_hf or using_blender_hf) and using_files:
-        parser.error("Provide either --hf-index OR (--image and --mask), not both.")
+        parser.error("Provide either --hf-index OR (--image and --mask/--masks), not both.")
     if not using_real_hf and not using_blender_hf and not using_files:
-        parser.error("Provide either --hf-index or both --image and --mask.")
-    if using_files and (args.image is None or args.mask is None):
-        parser.error("Both --image and --mask must be provided together.")
+        parser.error("Provide either --hf-index or --image with --mask or --masks.")
+    if args.mask is not None and args.masks is not None:
+        parser.error("--mask and --masks are mutually exclusive.")
+    if using_files and args.image is None:
+        parser.error("--image is required when using --mask or --masks.")
+    if using_files and args.mask is None and args.masks is None:
+        parser.error("Either --mask or --masks must be provided with --image.")
 
     config_path = Path(args.config)
     config = load_config(config_path)
@@ -169,9 +181,14 @@ def main():
         sample = loader.load(args.hf_index)
         if sample.prompt and args.prompt is None:
             prompt = sample.prompt
+    elif args.masks is not None:
+        sample = RealImageSample(
+            image_path=args.image, mask_path=None,
+            mask_paths=args.masks, prompt=prompt,
+        )
     else:
-        sample = RealImageSample(image_path=args.image, mask_path=args.mask, prompt=None)
-    
+        sample = RealImageSample(image_path=args.image, mask_path=args.mask, prompt=prompt)
+
     image_path = sample.image_path
     mask_path = sample.mask_path
 
@@ -193,36 +210,50 @@ def main():
 
     geometry = estimate_geometry(sample, config["geometry_model_name"])
 
-    print("Mesh saved to:", geometry.mesh_path)
+    if isinstance(geometry, GeometryOutputMultipleMirrors):
+        N = len(args.masks)
+        constraint_paths = [Path("temp_outputs") / f"geometry_constraint_mask_{i}.png" for i in range(N)]
+        projection = run_projection_multiple_mirrors(
+            geometry_output=geometry,
+            image_path=image_path,
+            mirror_mask_paths=[Path(p) for p in args.masks],
+            blender_path=blender_path,
+            projected_image_path=output_path,
+            geometry_constraint_masks_paths=constraint_paths,
+        )
+        print("Multi-mirror projection complete.")
+        print("Projected image:", projection.projected_image_path)
+        for i, cp in enumerate(projection.geometry_constraint_masks_paths):
+            print(f"  Constraint mask mirror {i}:", cp)
+    else:
+        projection = run_projection_single_mirror(
+            geometry_output=geometry,
+            image_path=image_path,
+            mirror_mask_path=mask_path,
+            blender_path=blender_path,
+        )
 
-    projection = run_projection(
-        geometry_output=geometry,
-        image_path=image_path,
-        mirror_mask_path=mask_path,
-        blender_path=config["blender_path"],
-    )
+        run_dual_mask_inpainting(
+            prompt=prompt,
+            projected_image_path=projection.projected_image_path,
+            geometry_constraint_mask_path=projection.geometry_constraint_mask_path,
+            generative_refinement_mask_path=mask_path,
+            output_path=output_path,
+            model_name=config["inpainting_model_name"],
+            prompt_2=args.prompt_2,
+            strength=args.strength,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            num_images_per_prompt=args.num_images_per_prompt,
+            max_sequence_length=args.max_sequence_length,
+            seed=args.seed,
+            height=args.height,
+            width=width,
+            n=args.n,
+            t_prime=args.t_prime,
+        )
 
-    run_dual_mask_inpainting(
-        prompt=prompt,
-        projected_image_path=projection.projected_image_path,
-        geometry_constraint_mask_path=projection.geometry_constraint_mask_path,
-        generative_refinement_mask_path=mask_path,
-        output_path=output_path,
-        model_name=config["inpainting_model_name"],
-        prompt_2=args.prompt_2,
-        strength=args.strength,
-        num_inference_steps=args.num_inference_steps,
-        guidance_scale=args.guidance_scale,
-        num_images_per_prompt=args.num_images_per_prompt,
-        max_sequence_length=args.max_sequence_length,
-        seed=args.seed,
-        height=args.height,
-        width=width,
-        n=args.n,
-        t_prime=args.t_prime,
-    )
-
-    print("Final result saved to:", output_path)
+        print("Final result saved to:", output_path)
 
 
 if __name__ == "__main__":

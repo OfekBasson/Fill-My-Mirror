@@ -4,10 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
-import numpy as np
 
 from fill_my_mirror.blender import render_with_blender
-from fill_my_mirror.geometry import GeometryOutput
+from fill_my_mirror.geometry import (
+    GeometryOutputSingleMirror,
+    GeometryOutputMultipleMirrors,
+)
 from .utils import (
     TEMP_OUTPUT_DIR,
     build_inpainting_mask,
@@ -18,14 +20,21 @@ from .utils import (
     load_rgb_image,
 )
 
+
 @dataclass
 class ProjectionOutput:
     projected_image_path: Path
     geometry_constraint_mask_path: Path
 
 
-def run_projection(
-    geometry_output: GeometryOutput,
+@dataclass
+class ProjectionOutputMultipleMirrors:
+    projected_image_path: Path
+    geometry_constraint_masks_paths: list[Path]
+
+
+def run_projection_single_mirror(
+    geometry_output: GeometryOutputSingleMirror,
     image_path: str | Path,
     mirror_mask_path: str | Path,
     blender_path: str | Path,
@@ -40,12 +49,11 @@ def run_projection(
             f"Mirror mask shape {mirror_mask.shape} does not match image shape {image.shape[:2]}"
         )
 
-    plane = estimate_mirror_plane(
-        geometry_output=geometry_output,
-    )
+    plane = estimate_mirror_plane(geometry_output=geometry_output)
 
+    _, _, _, entry_mesh_path, _ = geometry_output.mirror_entry
     reflected_mesh_path = build_reflected_mesh(
-        mesh_path=geometry_output.mesh_path,
+        mesh_path=entry_mesh_path,
         plane=plane,
     )
     raw_render_path = TEMP_OUTPUT_DIR / "reflected_scene_raw.png"
@@ -87,5 +95,85 @@ def run_projection(
 
     return ProjectionOutput(
         projected_image_path=projected_image_path,
-        geometry_constraint_mask_path=geometry_constraint_mask_path
+        geometry_constraint_mask_path=geometry_constraint_mask_path,
+    )
+
+
+
+def run_projection_multiple_mirrors(
+    geometry_output: GeometryOutputMultipleMirrors,
+    image_path: str | Path,
+    mirror_mask_paths: list[str | Path],
+    blender_path: str | Path,
+    projected_image_path: str | Path = TEMP_OUTPUT_DIR / "projected_image.png",
+    geometry_constraint_masks_paths: list[str | Path] | None = None,
+) -> ProjectionOutputMultipleMirrors:
+    if len(mirror_mask_paths) != len(geometry_output.mirror_entries):
+        raise ValueError(
+            f"Expected {len(geometry_output.mirror_entries)} mirror masks, "
+            f"got {len(mirror_mask_paths)}"
+        )
+
+    current_image = load_rgb_image(image_path)
+
+    if geometry_constraint_masks_paths is None:
+        geometry_constraint_masks_paths = [
+            TEMP_OUTPUT_DIR / f"geometry_constraint_mask_{i}.png"
+            for i in range(len(geometry_output.mirror_entries))
+        ]
+
+    saved_constraint_paths: list[Path] = []
+
+    for i, entry in enumerate(geometry_output.mirror_entries):
+        _, path_tuple, _, mesh_path_i, plane_i = entry
+
+        mirror_mask_i = load_binary_mask(mirror_mask_paths[i])
+
+        path_str = "_".join(str(x) for x in path_tuple)
+
+        combined_scene_mesh_i = TEMP_OUTPUT_DIR / f"combined_scene_{path_str}.glb"
+        build_reflected_mesh(
+            mesh_path=mesh_path_i,
+            plane=plane_i,
+            output_path=combined_scene_mesh_i,
+            combined=True,
+        )
+
+        raw_render_i_path = TEMP_OUTPUT_DIR / f"raw_render_{path_str}.png"
+        bw_render_i_path = TEMP_OUTPUT_DIR / f"bw_render_{path_str}.png"
+        depth_i_path = TEMP_OUTPUT_DIR / f"depth_{path_str}.exr"
+
+        render_with_blender(
+            blender_path=blender_path,
+            glb_path=combined_scene_mesh_i,
+            intrinsics=geometry_output.intrinsics,
+            image_shape=current_image.shape[:2],
+            output_path=raw_render_i_path,
+            bw_output_path=bw_render_i_path,
+            depth_output_path=depth_i_path,
+        )
+        raise Exception("Finished rendering with blender")
+        raw_render_i = load_rgb_image(raw_render_i_path)
+        bw_render_i = load_rgb_image(bw_render_i_path)
+
+        composited_i = composite_projection_onto_image(current_image, raw_render_i, mirror_mask_i)
+
+        constraint_mask_i = build_inpainting_mask(bw_render_i, mirror_mask_i)
+        constraint_path_i = Path(geometry_constraint_masks_paths[i])
+        constraint_path_i.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(constraint_path_i), constraint_mask_i)
+        saved_constraint_paths.append(constraint_path_i)
+
+        current_image[mirror_mask_i] = composited_i[mirror_mask_i]
+
+    projected_image_path = Path(projected_image_path)
+    projected_image_path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(
+        str(projected_image_path),
+        cv2.cvtColor(current_image, cv2.COLOR_RGB2BGR),
+    )
+
+    return ProjectionOutputMultipleMirrors(
+        projected_image_path=projected_image_path,
+        geometry_constraint_masks_paths=saved_constraint_paths,
     )

@@ -132,6 +132,21 @@ def setup_camera(intrinsics, height, width):
     cam.matrix_world = CAMERA_MATRIX_WORLD
 
 
+def setup_depth_output(scene, depth_path: str):
+    scene.use_nodes = True
+    scene.view_layers[0].use_pass_z = True
+    tree = scene.node_tree
+    tree.nodes.clear()
+
+    rl = tree.nodes.new("CompositorNodeRLayers")
+    fo = tree.nodes.new("CompositorNodeOutputFile")
+    fo.base_path = ""
+    fo.file_slots[0].path = depth_path
+    fo.format.file_format = "OPEN_EXR"
+    fo.format.color_depth = "32"
+    tree.links.new(rl.outputs["Depth"], fo.inputs[0])
+
+
 def main():
     argv = sys.argv
     args = argv[argv.index("--") + 1:]
@@ -140,6 +155,7 @@ def main():
     output_path = args[1]
     bw_output_path = args[2]
     npz_path = args[3]
+    depth_output_path = args[4] if len(args) > 4 else None
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.use_preferences_save = False
@@ -163,8 +179,14 @@ def main():
     setup_camera(intrinsics, height, width)
 
     setup_textured_materials()
+    if depth_output_path is not None:
+        setup_depth_output(scene, depth_output_path)
     scene.render.filepath = output_path
     bpy.ops.render.render(write_still=True)
+
+    # Disable compositor so B&W render doesn't re-trigger depth output
+    if depth_output_path is not None:
+        scene.use_nodes = False
 
     setup_bw_materials()
     scene.render.filepath = bw_output_path

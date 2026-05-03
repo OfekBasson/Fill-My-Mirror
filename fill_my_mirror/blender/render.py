@@ -18,6 +18,7 @@ def render_with_blender(
     image_shape: tuple[int, int],
     output_path: str | Path,
     bw_output_path: str | Path,
+    depth_output_path: str | Path | None = None,
 ) -> None:
     blender_path = Path(blender_path)
     glb_path = Path(glb_path)
@@ -33,6 +34,9 @@ def render_with_blender(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     bw_output_path.parent.mkdir(parents=True, exist_ok=True)
+    if depth_output_path is not None:
+        depth_output_path = Path(depth_output_path)
+        depth_output_path.parent.mkdir(parents=True, exist_ok=True)
 
     npz_path = TEMP_OUTPUT_DIR / "blender_render_inputs.npz"
     np.savez(
@@ -52,5 +56,8 @@ def render_with_blender(
         str(bw_output_path),
         str(npz_path),
     ]
+
+    if depth_output_path is not None:
+        command.append(str(depth_output_path))
 
     subprocess.run(command, check=True)

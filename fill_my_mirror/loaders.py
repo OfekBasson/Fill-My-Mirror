@@ -1,6 +1,6 @@
 import tempfile
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from datasets import load_dataset
 
@@ -12,15 +12,16 @@ from PIL import Image
 @dataclass
 class Sample:
     image_path: str
-    mask_path: str
+    mask_path: str | None
     prompt: str | None
     gt_image_path: str | None = None
+    mask_paths: list[str] = field(default_factory=list)
 
 
 @dataclass
 class RealImageSample(Sample):
     def __post_init__(self):
-        if self.gt_image_path is None:
+        if self.image_path is not None and self.gt_image_path is None:
             self.gt_image_path = self.image_path
 
 
