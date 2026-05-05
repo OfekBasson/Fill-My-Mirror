@@ -7,7 +7,7 @@ import torch
 from diffusers.utils import load_image
 from diffusers.utils import logging
 
-from .pipeline import DualMaskInterpolatedFluxFillPipeline
+from .pipeline_flux1 import DualMaskInterpolatedFluxFillPipeline
 from .pipeline_qwen_inpaint import DualMaskInterpolatedQwenInpaintPipeline
 
 
