@@ -152,7 +152,6 @@ def run_projection_multiple_mirrors(
             bw_output_path=bw_render_i_path,
             depth_output_path=depth_i_path,
         )
-        raise Exception("Finished rendering with blender")
         raw_render_i = load_rgb_image(raw_render_i_path)
         bw_render_i = load_rgb_image(bw_render_i_path)
 

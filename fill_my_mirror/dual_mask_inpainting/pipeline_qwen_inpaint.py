@@ -5,6 +5,7 @@ from typing import Any, Callable
 import numpy as np
 import torch
 from diffusers import QwenImageEditInpaintPipeline
+from diffusers.image_processor import PipelineImageInput
 from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit_inpaint import (
     XLA_AVAILABLE,
     calculate_dimensions,
@@ -21,45 +22,6 @@ logger = logging.get_logger(__name__)
 
 
 class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
-    def check_inputs(
-        self,
-        prompt,
-        image,
-        geometry_constraint_mask_image,
-        generative_refinement_mask_image,
-        strength,
-        height,
-        width,
-        output_type,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
-        prompt_embeds_mask=None,
-        negative_prompt_embeds_mask=None,
-        callback_on_step_end_tensor_inputs=None,
-        padding_mask_crop=None,
-        max_sequence_length=None,
-    ):
-        super().check_inputs(
-            prompt=prompt,
-            image=image,
-            mask_image=geometry_constraint_mask_image,
-            strength=strength,
-            height=height,
-            width=width,
-            output_type=output_type,
-            negative_prompt=negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            prompt_embeds_mask=prompt_embeds_mask,
-            negative_prompt_embeds_mask=negative_prompt_embeds_mask,
-            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-            padding_mask_crop=padding_mask_crop,
-            max_sequence_length=max_sequence_length,
-        )
-        if generative_refinement_mask_image is None:
-            raise ValueError("`generative_refinement_mask_image` must be provided.")
-
     @torch.no_grad()
     def __call__(
         self,
@@ -93,117 +55,10 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
         n: float = 6.0,
         t_prime: float = 750.0,
     ):
-        r"""
-        Function invoked when calling the pipeline for generation.
+        # geometry_constraint_mask_image is used as mask_image throughout.
+        # generative_refinement_mask_image, n, and t_prime are accepted but unused until blending is implemented.
+        mask_image = geometry_constraint_mask_image
 
-        Args:
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
-                numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
-                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
-                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
-                latents as `image`, but if passing latents directly it is not encoded again.
-            prompt (`str` or `list[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
-            negative_prompt (`str` or `list[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `true_cfg_scale` is
-                not greater than `1`).
-            true_cfg_scale (`float`, *optional*, defaults to 1.0):
-                true_cfg_scale (`float`, *optional*, defaults to 1.0): Guidance scale as defined in [Classifier-Free
-                Diffusion Guidance](https://huggingface.co/papers/2207.12598). `true_cfg_scale` is defined as `w` of
-                equation 2. of [Imagen Paper](https://huggingface.co/papers/2205.11487). Classifier-free guidance is
-                enabled by setting `true_cfg_scale > 1` and a provided `negative_prompt`. Higher guidance scale
-                encourages to generate images that are closely linked to the text `prompt`, usually at the expense of
-                lower image quality.
-            mask_image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to mask `image`. White pixels in the mask
-                are repainted while black pixels are preserved. If `mask_image` is a PIL image, it is converted to a
-                single channel (luminance) before use. If it's a numpy array or pytorch tensor, it should contain one
-                color channel (L) instead of 3, so the expected shape for pytorch tensor would be `(B, 1, H, W)`, `(B,
-                H, W)`, `(1, H, W)`, `(H, W)`. And for numpy array would be for `(B, H, W, 1)`, `(B, H, W)`, `(H, W,
-                1)`, or `(H, W)`.
-            mask_image_latent (`torch.Tensor`, `list[torch.Tensor]`):
-                `Tensor` representing an image batch to mask `image` generated by VAE. If not provided, the mask
-                latents tensor will ge generated by `mask_image`.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image. This is set to 1024 by default for the best results.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image. This is set to 1024 by default for the best results.
-            padding_mask_crop (`int`, *optional*, defaults to `None`):
-                The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied to
-                image and mask_image. If `padding_mask_crop` is not `None`, it will first find a rectangular region
-                with the same aspect ration of the image and contains all masked area, and then expand that area based
-                on `padding_mask_crop`. The image and mask_image will then be cropped based on the expanded area before
-                resizing to the original image size for inpainting. This is useful when the masked area is small while
-                the image is large and contain information irrelevant for inpainting, such as background.
-            strength (`float`, *optional*, defaults to 1.0):
-                Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
-                starting point and more noise is added the higher the `strength`. The number of denoising steps depends
-                on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
-                process runs for the full number of iterations specified in `num_inference_steps`. A value of 1
-                essentially ignores `image`.
-            num_inference_steps (`int`, *optional*, defaults to 50):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference.
-            sigmas (`list[float]`, *optional*):
-                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
-                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
-                will be used.
-            guidance_scale (`float`, *optional*, defaults to None):
-                A guidance scale value for guidance distilled models. Unlike the traditional classifier-free guidance
-                where the guidance scale is applied during inference through noise prediction rescaling, guidance
-                distilled models take the guidance scale directly as an input parameter during forward pass. Guidance
-                scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
-                that are closely linked to the text `prompt`, usually at the expense of lower image quality. This
-                parameter in the pipeline is there to support future guidance-distilled models when they come up. It is
-                ignored when not using guidance distilled models. To enable traditional classifier-free guidance,
-                please pass `true_cfg_scale > 1.0` and `negative_prompt` (even an empty negative prompt like " " should
-                enable classifier-free guidance computations).
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
-            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
-            latents (`torch.Tensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
-                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will be generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.qwenimage.QwenImagePipelineOutput`] instead of a plain tuple.
-            attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`list`, *optional*):
-                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
-                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
-
-        Examples:
-
-        Returns:
-            [`~pipelines.qwenimage.QwenImagePipelineOutput`] or `tuple`:
-            [`~pipelines.qwenimage.QwenImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is a list with the generated images.
-        """
         image_size = image[0].size if isinstance(image, list) else image.size
         calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
 
@@ -219,8 +74,7 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
         self.check_inputs(
             prompt,
             image,
-            geometry_constraint_mask_image,
-            generative_refinement_mask_image,
+            mask_image,
             strength,
             height,
             width,
@@ -251,7 +105,7 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
         device = self._execution_device
         # 3. Preprocess image
         if padding_mask_crop is not None:
-            crops_coords = self.mask_processor.get_crop_region(geometry_constraint_mask_image, width, height, pad=padding_mask_crop)
+            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
             resize_mode = "fill"
         else:
             crops_coords = None
@@ -345,7 +199,7 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
         )
 
         mask_condition = self.mask_processor.preprocess(
-            geometry_constraint_mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
+            mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
         )
 
         if masked_image_latents is None:
@@ -496,7 +350,7 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
 
             if padding_mask_crop is not None:
                 image = [
-                    self.image_processor.apply_overlay(geometry_constraint_mask_image, original_image, i, crops_coords) for i in image
+                    self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image
                 ]
 
         # Offload all models

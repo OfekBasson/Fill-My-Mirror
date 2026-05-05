@@ -65,6 +65,18 @@ def main():
         help="Optional second prompt."
     )
     parser.add_argument(
+        "--negative-prompt",
+        type=str,
+        default=" ",
+        help="Negative prompt for classifier-free guidance (Qwen only)."
+    )
+    parser.add_argument(
+        "--true-cfg-scale",
+        type=float,
+        default=4.0,
+        help="CFG scale for true classifier-free guidance (Qwen only)."
+    )
+    parser.add_argument(
         "--strength",
         type=float,
         default=1.0,
@@ -166,6 +178,7 @@ def main():
     config = load_config(config_path)
 
     prompt = args.prompt if args.prompt is not None else config["prompt"]
+    negative_prompt = args.negative_prompt if args.negative_prompt is not None else config["negative_prompt"]
     output_path = Path(args.output_path) if args.output_path is not None else Path(config["default_output_path"])
     blender_path = Path(args.blender_path) if args.blender_path is not None else Path(config["blender_path"])
 
@@ -202,6 +215,7 @@ def main():
     print(f"Image: {image_path}")
     print(f"Mask: {mask_path}")
     print(f"Prompt: {prompt}")
+    print(f"Negative prompt: {negative_prompt}")
     print(f"Output: {output_path}")
     print(f"Blender: {blender_path}")
 
@@ -246,9 +260,11 @@ def main():
             output_path=output_path,
             model_name=config["inpainting_model_name"],
             prompt_2=args.prompt_2,
+            negative_prompt=negative_prompt,
             strength=args.strength,
             num_inference_steps=args.num_inference_steps,
             guidance_scale=args.guidance_scale,
+            true_cfg_scale=args.true_cfg_scale,
             num_images_per_prompt=args.num_images_per_prompt,
             max_sequence_length=args.max_sequence_length,
             seed=args.seed,
@@ -256,6 +272,8 @@ def main():
             width=width,
             n=args.n,
             t_prime=args.t_prime,
+            edit_model_prompt_template=config["edit_model_prompt_template"],
+            edit_models=set(config["edit_models"]),
         )
 
         print("Final result saved to:", output_path)

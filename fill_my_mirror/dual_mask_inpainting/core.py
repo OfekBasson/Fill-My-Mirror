@@ -15,24 +15,23 @@ logger = logging.get_logger(__name__)
 
 MODEL_REGISTRY: dict[str, type] = {
     "black-forest-labs/FLUX.1-Fill-dev": DualMaskInterpolatedFluxFillPipeline,
-    "Qwen/Qwen-Image-Edit-2511": DualMaskInterpolatedQwenInpaintPipeline,
+    "Qwen/Qwen-Image-Edit": DualMaskInterpolatedQwenInpaintPipeline,
 }
 
-# General-purpose edit models need the prompt to explicitly describe the mirror-filling
-# task; native inpainting models receive the content prompt directly.
-_EDIT_MODEL_PROMPT_TEMPLATE = (
-    "Fill in the mirror corresponding to the mask, taking into account the provided "
-    "geometry information to maintain geometric consistency. "
-    "The prompt describing the image is: {prompt}"
+_DEFAULT_EDIT_MODEL_PROMPT_TEMPLATE = (
+    "Fill in the mirror which corresponds to the mask. The prompt describing the image is: {prompt}"
 )
-_EDIT_MODELS = {
-    "Qwen/Qwen-Image-Edit-2511",
-}
+_DEFAULT_EDIT_MODELS: frozenset[str] = frozenset({"Qwen/Qwen-Image-Edit-2511"})
 
 
-def _apply_prompt_template(prompt: str, model_name: str) -> str:
-    if model_name in _EDIT_MODELS:
-        return _EDIT_MODEL_PROMPT_TEMPLATE.format(prompt=prompt)
+def _apply_prompt_template(
+    prompt: str,
+    model_name: str,
+    edit_model_prompt_template: str = _DEFAULT_EDIT_MODEL_PROMPT_TEMPLATE,
+    edit_models: frozenset[str] | set[str] = _DEFAULT_EDIT_MODELS,
+) -> str:
+    if model_name in edit_models:
+        return edit_model_prompt_template.format(prompt=prompt)
     return prompt
 
 
@@ -131,9 +130,11 @@ def run_dual_mask_inpainting(
     output_path: str | Path,
     model_name: str = "black-forest-labs/FLUX.1-Fill-dev",
     prompt_2: str | None = None,
+    negative_prompt: str | None = " ",
     strength: float = 1.0,
     num_inference_steps: int = 30,
     guidance_scale: float = 30.0,
+    true_cfg_scale: float = 4.0,
     num_images_per_prompt: int = 1,
     max_sequence_length: int = 512,
     seed: int = 0,
@@ -143,14 +144,15 @@ def run_dual_mask_inpainting(
     t_prime: float = 750.0,
     torch_dtype: torch.dtype = torch.bfloat16,
     pipe: Any | None = None,
+    edit_model_prompt_template: str = _DEFAULT_EDIT_MODEL_PROMPT_TEMPLATE,
+    edit_models: frozenset[str] | set[str] = _DEFAULT_EDIT_MODELS,
 ):
     projected_image_path = Path(projected_image_path)
     geometry_constraint_mask_path = Path(geometry_constraint_mask_path)
     generative_refinement_mask_path = Path(generative_refinement_mask_path)
     output_path = Path(output_path)
 
-    image = load_image(str("/home/ofek_basson/Fill-My-Mirror/data/real_images/images/0.png")).convert("RGB")
-    # image = load_image(str(projected_image_path)).convert("RGB")
+    image = load_image(str(projected_image_path)).convert("RGB")
     geometry_constraint_mask = load_image(str(geometry_constraint_mask_path)).convert("L")
     generative_refinement_mask = load_image(str(generative_refinement_mask_path)).convert("L")
 
@@ -171,7 +173,7 @@ def run_dual_mask_inpainting(
         )
 
     generator = torch.Generator("cuda").manual_seed(seed)
-    prompt = _apply_prompt_template(prompt, model_name)
+    prompt = _apply_prompt_template(prompt, model_name, edit_model_prompt_template, edit_models)
 
     pipeline_kwargs = _filter_pipeline_kwargs(
         pipe,
@@ -179,15 +181,16 @@ def run_dual_mask_inpainting(
         {
             "prompt": prompt,
             "prompt_2": prompt_2,
+            "negative_prompt": negative_prompt,
             "image": image,
-            # "geometry_constraint_mask_image": geometry_constraint_mask,
-            "geometry_constraint_mask_image": generative_refinement_mask,
+            "geometry_constraint_mask_image": geometry_constraint_mask,
             "generative_refinement_mask_image": generative_refinement_mask,
             "height": height,
             "width": width,
             "strength": strength,
             "num_inference_steps": num_inference_steps,
             "guidance_scale": guidance_scale,
+            "true_cfg_scale": true_cfg_scale,
             "num_images_per_prompt": num_images_per_prompt,
             "max_sequence_length": max_sequence_length,
             "generator": generator,
@@ -195,7 +198,6 @@ def run_dual_mask_inpainting(
             "t_prime": t_prime,
         },
     )
-    print(f'running pipeline with kwargs: {pipeline_kwargs}')
     result = pipe(
         **pipeline_kwargs,
     )
