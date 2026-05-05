@@ -55,10 +55,6 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
         n: float = 6.0,
         t_prime: float = 750.0,
     ):
-        # geometry_constraint_mask_image is used as mask_image throughout.
-        # generative_refinement_mask_image, n, and t_prime are accepted but unused until blending is implemented.
-        mask_image = geometry_constraint_mask_image
-
         image_size = image[0].size if isinstance(image, list) else image.size
         calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
 
@@ -74,7 +70,7 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
         self.check_inputs(
             prompt,
             image,
-            mask_image,
+            geometry_constraint_mask_image,
             strength,
             height,
             width,
@@ -105,7 +101,7 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
         device = self._execution_device
         # 3. Preprocess image
         if padding_mask_crop is not None:
-            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
+            crops_coords = self.mask_processor.get_crop_region(geometry_constraint_mask_image, width, height, pad=padding_mask_crop)
             resize_mode = "fill"
         else:
             crops_coords = None
@@ -199,7 +195,7 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
         )
 
         mask_condition = self.mask_processor.preprocess(
-            mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
+            geometry_constraint_mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
         )
 
         if masked_image_latents is None:
@@ -210,6 +206,23 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
         mask, masked_image_latents = self.prepare_mask_latents(
             mask_condition,
             masked_image,
+            batch_size,
+            num_channels_latents,
+            num_images_per_prompt,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            generator,
+        )
+
+        ref_mask_condition = self.mask_processor.preprocess(
+            generative_refinement_mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
+        )
+        ref_masked_image = image * (ref_mask_condition < 0.5)
+        ref_mask, ref_masked_image_latents = self.prepare_mask_latents(
+            ref_mask_condition,
+            ref_masked_image,
             batch_size,
             num_channels_latents,
             num_images_per_prompt,
@@ -247,6 +260,9 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
         if self.attention_kwargs is None:
             self._attention_kwargs = {}
 
+        ref_latents = latents.clone()
+        T = timesteps[0].float()
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -254,13 +270,13 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
                     continue
 
                 self._current_timestep = t
+                timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
+                # --- geometry constraint branch ---
                 latent_model_input = latents
                 if image_latents is not None:
                     latent_model_input = torch.cat([latents, image_latents], dim=1)
 
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
                 with self.transformer.cache_context("cond"):
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
@@ -288,31 +304,84 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
                         )[0]
                     neg_noise_pred = neg_noise_pred[:, : latents.size(1)]
                     comb_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
-
                     cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
                     noise_norm = torch.norm(comb_pred, dim=-1, keepdim=True)
                     noise_pred = comb_pred * (cond_norm / noise_norm)
 
-                # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                step_index_before = self.scheduler._step_index
+                latents_geom = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
-                # for 64 channel transformer only.
                 init_latents_proper = image_latents
-                init_mask = mask
-
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
                     init_latents_proper = self.scheduler.scale_noise(
                         init_latents_proper, torch.tensor([noise_timestep]), noise
                     )
 
-                latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                latents_geom = (1 - mask) * init_latents_proper + mask * latents_geom
+
+                # --- generative refinement branch (only when t <= t_prime) ---
+                if t <= t_prime:
+                    ref_latent_model_input = ref_latents
+                    if image_latents is not None:
+                        ref_latent_model_input = torch.cat([ref_latents, image_latents], dim=1)
+
+                    with self.transformer.cache_context("cond"):
+                        ref_noise_pred = self.transformer(
+                            hidden_states=ref_latent_model_input,
+                            timestep=timestep / 1000,
+                            guidance=guidance,
+                            encoder_hidden_states_mask=prompt_embeds_mask,
+                            encoder_hidden_states=prompt_embeds,
+                            img_shapes=img_shapes,
+                            attention_kwargs=self.attention_kwargs,
+                            return_dict=False,
+                        )[0]
+                        ref_noise_pred = ref_noise_pred[:, : ref_latents.size(1)]
+
+                    if do_true_cfg:
+                        with self.transformer.cache_context("uncond"):
+                            ref_neg_noise_pred = self.transformer(
+                                hidden_states=ref_latent_model_input,
+                                timestep=timestep / 1000,
+                                guidance=guidance,
+                                encoder_hidden_states_mask=negative_prompt_embeds_mask,
+                                encoder_hidden_states=negative_prompt_embeds,
+                                img_shapes=img_shapes,
+                                attention_kwargs=self.attention_kwargs,
+                                return_dict=False,
+                            )[0]
+                        ref_neg_noise_pred = ref_neg_noise_pred[:, : ref_latents.size(1)]
+                        ref_comb_pred = ref_neg_noise_pred + true_cfg_scale * (ref_noise_pred - ref_neg_noise_pred)
+                        ref_cond_norm = torch.norm(ref_noise_pred, dim=-1, keepdim=True)
+                        ref_noise_norm = torch.norm(ref_comb_pred, dim=-1, keepdim=True)
+                        ref_noise_pred = ref_comb_pred * (ref_cond_norm / ref_noise_norm)
+
+                    self.scheduler._step_index = step_index_before
+                    latents_ref = self.scheduler.step(ref_noise_pred, t, ref_latents, return_dict=False)[0]
+                    latents_ref = (1 - ref_mask) * init_latents_proper + ref_mask * latents_ref
+
+                    # interpolate between the two latents (norm-preserving)
+                    alpha = (t.float() / T).clamp(0, 1)
+                    interpolation_scale = alpha.pow(n)
+
+                    mixed = interpolation_scale * latents_geom + (1 - interpolation_scale) * latents_ref
+
+                    reduce_dims = (1, 2)
+                    target_norm = torch.linalg.vector_norm(latents_geom, dim=reduce_dims, keepdim=True)
+                    mixed_norm = torch.linalg.vector_norm(mixed, dim=reduce_dims, keepdim=True)
+                    latents = mixed * (target_norm / (mixed_norm + 1e-8))
+                else:
+                    latents = latents_geom
+
+                ref_latents = latents.clone()
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
+                    ref_latents = latents.clone()
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -350,7 +419,7 @@ class DualMaskInterpolatedQwenInpaintPipeline(QwenImageEditInpaintPipeline):
 
             if padding_mask_crop is not None:
                 image = [
-                    self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image
+                    self.image_processor.apply_overlay(geometry_constraint_mask_image, original_image, i, crops_coords) for i in image
                 ]
 
         # Offload all models
