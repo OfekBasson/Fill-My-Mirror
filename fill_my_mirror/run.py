@@ -1,5 +1,7 @@
 import argparse
+import gc
 from pathlib import Path
+import torch
 import yaml
 from fill_my_mirror.geometry import estimate_geometry
 from fill_my_mirror.projection import run_projection_single_mirror, run_projection_multiple_mirrors
@@ -107,13 +109,13 @@ def main():
     parser.add_argument(
         "--height",
         type=float,
-        default=1024,
+        default=800,
         help="Height of the desired image."
     )
     parser.add_argument(
         "--width",
         type=float,
-        default=1024,
+        default=800,
         help="Width of the desired image."
     )
     parser.add_argument(
@@ -196,6 +198,7 @@ def main():
 
     print("Running Fill My Mirror pipeline")
     print(f"Config: {config_path}")
+    print(f"Model: {config['inpainting_model_name']}")
     print(f"Image: {image_path}")
     print(f"Mask: {mask_path}")
     print(f"Prompt: {prompt}")
@@ -209,6 +212,8 @@ def main():
         )
 
     geometry = estimate_geometry(sample, config["geometry_model_name"])
+    gc.collect()
+    torch.cuda.empty_cache()
 
     if isinstance(geometry, GeometryOutputMultipleMirrors):
         N = len(args.masks)

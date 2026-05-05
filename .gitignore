@@ -18,6 +18,7 @@ dist/
 Thumbs.db
 .vscode/
 .idea/
+CLAUDE.md
 
 # Conda / local envs
 .env

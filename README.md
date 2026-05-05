@@ -241,7 +241,7 @@ python scripts/run_batch.py --dataset real --output-dir outputs/batch_real/
 | `--skip-existing` | `False` | Skip indices whose output file already exists (useful for resuming) |
 | `--blender-path` | *(from config)* | Path to the Blender executable. Overrides the config file value |
 
-All standard pipeline arguments (`--prompt`, `--prompt-2`, `--strength`, `--num-inference-steps`, `--guidance-scale`, `--seed`, `--n`, `--t-prime`, etc.) are accepted and forwarded to the pipeline unchanged — see [Command Line Arguments](#command-line-arguments) for their descriptions and defaults.
+All standard pipeline arguments (`--prompt`, `--strength`, `--num-inference-steps`, `--guidance-scale`, `--seed`, `--n`, `--t-prime`, etc.) are accepted and forwarded to the pipeline unchanged — see [Command Line Arguments](#command-line-arguments) for their descriptions and defaults.
 
 ---
 <a id="evaluation"></a>
@@ -391,6 +391,25 @@ hf_dataset_repo: "OfekBassonResearch/Fill-My-Mirror"
 hf_blender_dataset_repo: "OfekBassonResearch/Fill-My-Mirror-Blender"
 mast3r_model_name: "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 ```
+
+## Alternative Inpainting Models
+
+`inpainting_model_name` selects the dual-mask backend.
+
+| Model ID | Backend class | Notes |
+|---|---|---|
+| `black-forest-labs/FLUX.1-Fill-dev` | `DualMaskInterpolatedFluxFillPipeline` | Default; native inpainting backend built on `FluxFillPipeline` |
+| `Qwen/Qwen-Image-Edit-2511` | `DualMaskInterpolatedQwenInpaintPipeline` | Native inpainting backend built on `QwenImageEditInpaintPipeline` |
+
+To switch, edit `configs/config.yaml`:
+
+```yaml
+inpainting_model_name: "Qwen/Qwen-Image-Edit-2511"
+```
+
+Both backends use the same dual-mask noise interpolation parameters `n` and
+`t_prime`. When an argument is unsupported by the selected backend, Fill My
+Mirror logs a warning and silently ignores it.
 
 ---
 <a id="citation"></a>
