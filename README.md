@@ -105,6 +105,20 @@ pip install -r third_party/MASt3R/dust3r/requirements.txt
 
 ---
 
+## 6. (Optional) Install Depth Anything 3 for alternative geometry
+
+Required only if you plan to use a `depth-anything/*` geometry model (e.g. `depth-anything/DA3-LARGE-1.1`).
+
+```bash
+pip install xformers "torch>=2" torchvision
+pip install git+https://github.com/ByteDance-Seed/Depth-Anything-3.git
+```
+
+> **Note**: Depth Anything 3 does not yet support multi-mirror scenes.
+> Use MoGe-V2 (`Ruicheng/moge-2-vitl-normal`) for images with more than one mirror.
+
+---
+
 <a id="quick-start"></a>
 
 # 🚀 Quick Start
@@ -391,6 +405,23 @@ hf_dataset_repo: "OfekBassonResearch/Fill-My-Mirror"
 hf_blender_dataset_repo: "OfekBassonResearch/Fill-My-Mirror-Blender"
 mast3r_model_name: "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 ```
+
+## Alternative Geometry Models
+
+`geometry_model_name` selects the geometry estimator used for real images (Blender samples always use ground-truth geometry).
+
+| Model ID | Notes |
+|---|---|
+| `Ruicheng/moge-2-vitl-normal` | Default; MoGe-V2 monocular geometry estimator |
+| `depth-anything/DA3-LARGE-1.1` | Depth Anything 3; any `depth-anything/*` variant is accepted |
+
+To switch, edit `configs/config.yaml`:
+
+```yaml
+geometry_model_name: "depth-anything/DA3-LARGE-1.1"
+```
+
+> **Note**: Depth Anything 3 does not yet support multi-mirror scenes. Use MoGe-V2 for images with more than one mirror.
 
 ## Alternative Inpainting Models
 

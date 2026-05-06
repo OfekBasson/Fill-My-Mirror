@@ -205,6 +205,121 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
         )
 
 
+class DepthAnythingGeometryProcessor(GeometryProcessorBase):
+
+    def __init__(self, model_name: str):
+        from depth_anything_3.api import DepthAnything3
+        self.model_name = model_name
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = DepthAnything3.from_pretrained(model_name).to(self.device)
+
+    def get_geometry(self, sample: Sample) -> GeometryOutputBase:
+        if isinstance(sample.mask_paths, list) and len(sample.mask_paths) > 1:
+            raise NotImplementedError("Multi-mirror not yet supported for DepthAnythingGeometryProcessor")
+        return self._get_geometry_single_mirror(sample)
+
+    def _get_geometry_single_mirror(self, sample) -> GeometryOutputSingleMirror:
+        image_bgr = cv2.imread(str(sample.image_path))
+        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+
+        mask_path = sample.mask_path or (sample.mask_paths[0] if sample.mask_paths else None)
+        mirror_mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) > 0
+
+        H_orig, W_orig = image_rgb.shape[:2]
+        prediction = self.model.inference(
+            [str(sample.image_path)],
+            process_res=max(H_orig, W_orig),
+            process_res_method="upper_bound_resize",
+        )
+
+        depth = prediction.depth[0]
+
+        H_d, W_d = depth.shape
+
+        if prediction.intrinsics is not None:
+            intrinsics_px = prediction.intrinsics[0].copy()
+            # The model may process internally at a different aspect ratio than the
+            # output depth resolution (e.g. crops/pads height). fx is calibrated for
+            # W_d correctly; fy may reflect a different internal height. Force square
+            # pixels (fy == fx) which is valid for all consumer cameras.
+            fx_px = float(intrinsics_px[0, 0])
+            fy_px = fx_px
+            cx_px = W_d / 2.0
+            cy_px = H_d / 2.0
+        else:
+            # Depth-only models (e.g. DA3MONO-LARGE) don't estimate intrinsics.
+            # Assume a 60° horizontal FoV, principal point at image center.
+            fx_px = W_d / (2 * np.tan(np.deg2rad(60) / 2))
+            fy_px = fx_px
+            cx_px = W_d / 2.0
+            cy_px = H_d / 2.0
+
+        H, W = depth.shape
+        if mirror_mask.shape != (H, W):
+            mirror_mask = cv2.resize(
+                mirror_mask.astype(np.uint8), (W, H), interpolation=cv2.INTER_NEAREST
+            ).astype(bool)
+
+        ys, xs = np.meshgrid(np.arange(H), np.arange(W), indexing="ij")
+        X = (xs - cx_px) * depth / fx_px
+        Y = (ys - cy_px) * depth / fy_px
+        Z = depth
+        points = np.stack([X, Y, Z], axis=-1).astype(np.float32)
+
+        points = points * np.array([-1.0, -1.0, 1.0], dtype=np.float32)
+
+        # Normalize intrinsics to match MoGe's format (fx/W, cx/W, cy/H = 0.5)
+        # so the rest of the pipeline (Blender camera setup) handles them uniformly.
+        intrinsics = np.array([
+            [fx_px / W_d, 0,           cx_px / W_d],
+            [0,           fy_px / H_d, cy_px / H_d],
+            [0,           0,           1          ],
+        ], dtype=np.float32)
+
+        mirror_pts = points[mirror_mask]
+        if mirror_pts.shape[0] < 3:
+            return GeometryOutputSingleMirror(intrinsics=intrinsics, mirror_entry=None)
+
+        plane = orient_plane_toward_camera(fit_plane_svd(mirror_pts))
+        mesh_path = _build_mesh(image_rgb, points, depth, mirror_mask)
+
+        sensor_width_mm = 36.0  # Blender default
+        fx_norm = float(intrinsics[0, 0])
+        focal_length_mm = fx_norm * sensor_width_mm
+        print("[DepthAnything intrinsics debug]")
+        print(f"  depth shape:          ({H_d}, {W_d})")
+        print(f"  fx_px:                {fx_px:.4f}")
+        print(f"  intrinsics (normalized):\n{intrinsics}")
+        print(f"  → fx_norm:            {fx_norm:.6f}")
+        print(f"  → focal_length_mm:    {focal_length_mm:.4f}  (sensor_width={sensor_width_mm}mm)")
+
+        entry: MirrorEntry = (mirror_pts, (0,), (0, 0, 0), mesh_path, plane)
+        return GeometryOutputSingleMirror(intrinsics=intrinsics, mirror_entry=entry)
+
+
+GEOMETRY_MODEL_REGISTRY: dict[str, type] = {
+    "Ruicheng/moge-2-vitl-normal": MoGeGeometryProcessor,
+    # Depth Anything 3 — requires optional install, see README step 6
+    "depth-anything/DA3NESTED-GIANT-LARGE-1.1": DepthAnythingGeometryProcessor,
+
+}
+
+
+def estimate_geometry(sample: Sample, model_name: str) -> GeometryOutputBase:
+    if isinstance(sample, BlenderSample):
+        return BlenderGeometryProcessor().get_geometry(sample)
+
+    processor_class = GEOMETRY_MODEL_REGISTRY.get(model_name)
+    if processor_class is None:
+        if model_name.startswith("depth-anything/"):
+            processor_class = DepthAnythingGeometryProcessor
+        else:
+            supported = ", ".join(sorted(GEOMETRY_MODEL_REGISTRY))
+            raise ValueError(f"Unsupported geometry model `{model_name}`. Supported: {supported}")
+
+    return processor_class(model_name).get_geometry(sample)
+
+
 class BlenderGeometryProcessor(GeometryProcessorBase):
 
     def __init__(self):
@@ -283,9 +398,3 @@ def _build_mesh(
     mesh.export(output_path)
     print("Mesh saved to:", output_path)
     return output_path
-
-
-def estimate_geometry(sample: Sample, model_name: str) -> GeometryOutputBase:
-    if isinstance(sample, BlenderSample):
-        return BlenderGeometryProcessor().get_geometry(sample)
-    return MoGeGeometryProcessor(model_name).get_geometry(sample)
