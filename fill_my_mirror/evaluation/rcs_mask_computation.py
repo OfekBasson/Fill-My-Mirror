@@ -126,10 +126,10 @@ def compute_rcs_mask(
     mask_arr = _pil_to_binary(mirror_mask)
     H, W = gt_arr.shape[:2]
 
-    scene_arr, mirror_arr = _build_views(gt_arr, mask_arr)
+    scene_arr, _ = _build_views(gt_arr, mask_arr)
 
-    pts_scene, pts_mirror = _run_mast3r_correspondences(
-        scene_arr, mirror_arr, mast3r_model_name, device
+    pts_scene, pts_mirror, use_rot180 = _run_mast3r_best_correspondences(
+        scene_arr, gt_arr, mask_arr, mast3r_model_name, device
     )
 
     correspondence_mask = np.zeros((H, W), dtype=bool)
@@ -139,8 +139,10 @@ def compute_rcs_mask(
         scale_y = H / _MAST3R_IMG_SIZE
         xs = np.clip(np.round(pts_mirror[:, 0] * scale_x).astype(int), 0, W - 1)
         ys = np.clip(np.round(pts_mirror[:, 1] * scale_y).astype(int), 0, H - 1)
-        # Undo horizontal flip: the mirror view was flipped before inference
+        # Undo the transform applied to the mirror view before MASt3R inference
         xs = W - 1 - xs
+        if use_rot180:
+            ys = H - 1 - ys
         correspondence_mask[ys, xs] = True
     else:
         logger.warning(
@@ -192,6 +194,55 @@ def _build_views(
     return scene, mirror
 
 
+def _build_mirror_rot180(
+    image_arr: np.ndarray, mirror_mask_arr: np.ndarray
+) -> np.ndarray:
+    """Return the mirror view rotated 180° (alternative to horizontal flip)."""
+    mirror = image_arr.copy()
+    mirror[~mirror_mask_arr] = 0
+    return np.rot90(mirror, 2)
+
+
+def _run_mast3r_best_correspondences(
+    scene_arr: np.ndarray,
+    image_arr: np.ndarray,
+    mirror_mask_arr: np.ndarray,
+    mast3r_model_name: str,
+    device: str,
+) -> tuple[np.ndarray, np.ndarray, bool]:
+    """Run MASt3R with both mirror-view variants; return the one with more matches.
+
+    Tries horizontal flip (current default) and 180° rotation. Chooses whichever
+    produces more reciprocal correspondences.
+
+    Returns
+    -------
+    pts_scene : np.ndarray, shape (N, 2)
+    pts_mirror : np.ndarray, shape (N, 2)  — coords in the *chosen* mirror view space
+    use_rot180 : bool — True if the 180° variant was chosen
+    """
+    _, mirror_hflip = _build_views(image_arr, mirror_mask_arr)
+    mirror_rot180 = _build_mirror_rot180(image_arr, mirror_mask_arr)
+
+    pts_scene_hflip, pts_mirror_hflip = _run_mast3r_correspondences(
+        scene_arr, mirror_hflip, mast3r_model_name, device
+    )
+    pts_scene_rot180, pts_mirror_rot180 = _run_mast3r_correspondences(
+        scene_arr, mirror_rot180, mast3r_model_name, device
+    )
+
+    n_hflip = pts_mirror_hflip.shape[0]
+    n_rot180 = pts_mirror_rot180.shape[0]
+    logger.info(
+        "MASt3R correspondences — hflip: %d, rot180: %d → choosing %s",
+        n_hflip, n_rot180, "rot180" if n_rot180 > n_hflip else "hflip",
+    )
+
+    if n_rot180 > n_hflip:
+        return pts_scene_rot180, pts_mirror_rot180, True
+    return pts_scene_hflip, pts_mirror_hflip, False
+
+
 def _load_model(mast3r_model_name: str, device: str) -> object:
     """Load (or retrieve cached) MASt3R model."""
     from mast3r.model import AsymmetricMASt3R
@@ -238,17 +289,35 @@ def _run_mast3r_correspondences(
             [tuple(images)], model, device, batch_size=1, verbose=False
         )
 
+        view1, view2 = output["view1"], output["view2"]
+
         # Extract per-pixel descriptors from both views
         desc1 = output["pred1"]["desc"].squeeze(0).detach()  # (H', W', D)
         desc2 = output["pred2"]["desc"].squeeze(0).detach()  # (H', W', D)
 
+        # subsample_or_initxy1=1 queries every pixel → maximum correspondence density
         pts_scene, pts_mirror = fast_reciprocal_NNs(
             desc1, desc2,
-            subsample_or_initxy1=8,
+            subsample_or_initxy1=1,
             device=device,
             dist="dot",
             block_size=2**13,
         )
+
+        # Filter out matches on the 3-pixel border (unreliable descriptor region)
+        H0, W0 = view1["true_shape"][0]
+        H1, W1 = view2["true_shape"][0]
+        valid0 = (
+            (pts_scene[:, 0] >= 3) & (pts_scene[:, 0] < int(W0) - 3) &
+            (pts_scene[:, 1] >= 3) & (pts_scene[:, 1] < int(H0) - 3)
+        )
+        valid1 = (
+            (pts_mirror[:, 0] >= 3) & (pts_mirror[:, 0] < int(W1) - 3) &
+            (pts_mirror[:, 1] >= 3) & (pts_mirror[:, 1] < int(H1) - 3)
+        )
+        valid = valid0 & valid1
+        pts_scene, pts_mirror = pts_scene[valid], pts_mirror[valid]
+
         # pts_* are (N, 2) arrays of (x, y) at MASt3R inference resolution
         return pts_scene, pts_mirror
 
@@ -263,11 +332,12 @@ def _dilate_and_intersect(
     correspondence_mask: np.ndarray,
     mirror_mask_arr: np.ndarray,
     dilation_radius: int,
+    iterations: int = 2,
 ) -> np.ndarray:
     """
     Dilate the correspondence mask and intersect with the mirror mask.
 
-    Uses a circular kernel (``cv2.MORPH_ELLIPSE``) with ``iterations=2``.
+    Uses a circular kernel (``cv2.MORPH_ELLIPSE``).
 
     Parameters
     ----------
@@ -278,6 +348,8 @@ def _dilate_and_intersect(
     dilation_radius : int
         Radius of the circular kernel (kernel size = ``(2*r+1) × (2*r+1)``).
         Set to 0 to disable dilation.
+    iterations : int
+        Number of dilation iterations. Default is 2.
 
     Returns
     -------
@@ -287,7 +359,7 @@ def _dilate_and_intersect(
         kernel_size = 2 * dilation_radius + 1
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
         mask_uint8 = correspondence_mask.astype(np.uint8) * 255
-        dilated_uint8 = cv2.dilate(mask_uint8, kernel, iterations=2)
+        dilated_uint8 = cv2.dilate(mask_uint8, kernel, iterations=iterations)
         dilated = dilated_uint8 > 127
     else:
         dilated = correspondence_mask.copy()

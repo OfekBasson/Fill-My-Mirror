@@ -131,7 +131,7 @@ def main():
         help="Width of the desired image."
     )
     parser.add_argument(
-        "--t-prime",
+        "--t_prime",
         type=float,
         default=750.0,
         help="First timestep threshold for interpolation."

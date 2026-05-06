@@ -61,10 +61,10 @@ def compute_gt_geometry_constraint_mask(
         (``gt_geometry_constraint_masks/blender/{sample_id}.png``).
     """
     from fill_my_mirror.geometry import estimate_geometry
-    from fill_my_mirror.projection import run_projection
+    from fill_my_mirror.projection import run_projection_single_mirror
 
-    geometry_output = estimate_geometry(sample, geometry_model_name=None)
-    projection_output = run_projection(
+    geometry_output = estimate_geometry(sample, model_name=None)
+    projection_output = run_projection_single_mirror(
         geometry_output=geometry_output,
         image_path=sample.image_path,
         mirror_mask_path=sample.mask_path,
