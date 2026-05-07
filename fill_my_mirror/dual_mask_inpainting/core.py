@@ -8,20 +8,20 @@ from diffusers.utils import load_image
 from diffusers.utils import logging
 
 from .pipeline_flux1 import DualMaskInterpolatedFluxFillPipeline
-from .pipeline_qwen_inpaint import DualMaskInterpolatedQwenInpaintPipeline
+from .pipeline_flux2klein import DualMaskFlux2KleinInpaintPipeline
 
 
 logger = logging.get_logger(__name__)
 
 MODEL_REGISTRY: dict[str, type] = {
     "black-forest-labs/FLUX.1-Fill-dev": DualMaskInterpolatedFluxFillPipeline,
-    "Qwen/Qwen-Image-Edit": DualMaskInterpolatedQwenInpaintPipeline,
+    "black-forest-labs/FLUX.2-klein-base-9B": DualMaskFlux2KleinInpaintPipeline,
 }
 
 _DEFAULT_EDIT_MODEL_PROMPT_TEMPLATE = (
     "Fill in the mirror which corresponds to the mask. The prompt describing the image is: {prompt}"
 )
-_DEFAULT_EDIT_MODELS: frozenset[str] = frozenset({"Qwen/Qwen-Image-Edit-2511"})
+_DEFAULT_EDIT_MODELS: frozenset[str] = frozenset()
 
 
 def _apply_prompt_template(
@@ -36,6 +36,28 @@ def _apply_prompt_template(
 
 
 PIPELINE_SUPPORTED_KWARGS: dict[type, set[str]] = {
+    DualMaskFlux2KleinInpaintPipeline: {
+        "prompt",
+        "image",
+        "original_image",
+        "image_reference",
+        "geometry_constraint_mask_image",
+        "generative_refinement_mask_image",
+        "height",
+        "width",
+        "padding_mask_crop",
+        "strength",
+        "num_inference_steps",
+        "sigmas",
+        "guidance_scale",
+        "num_images_per_prompt",
+        "generator",
+        "latents",
+        "prompt_embeds",
+        "negative_prompt_embeds",
+        "max_sequence_length",
+        "text_encoder_out_layers",
+    },
     DualMaskInterpolatedFluxFillPipeline: {
         "prompt",
         "prompt_2",
@@ -47,24 +69,6 @@ PIPELINE_SUPPORTED_KWARGS: dict[type, set[str]] = {
         "strength",
         "num_inference_steps",
         "guidance_scale",
-        "num_images_per_prompt",
-        "max_sequence_length",
-        "generator",
-        "n",
-        "t_prime",
-    },
-    DualMaskInterpolatedQwenInpaintPipeline: {
-        "prompt",
-        "negative_prompt",
-        "image",
-        "geometry_constraint_mask_image",
-        "generative_refinement_mask_image",
-        "height",
-        "width",
-        "strength",
-        "num_inference_steps",
-        "guidance_scale",
-        "true_cfg_scale",
         "num_images_per_prompt",
         "max_sequence_length",
         "generator",
@@ -128,13 +132,13 @@ def run_dual_mask_inpainting(
     geometry_constraint_mask_path: str | Path,
     generative_refinement_mask_path: str | Path,
     output_path: str | Path,
+    original_image_path: str | Path | None = None,
     model_name: str = "black-forest-labs/FLUX.1-Fill-dev",
     prompt_2: str | None = None,
     negative_prompt: str | None = " ",
     strength: float = 1.0,
     num_inference_steps: int = 30,
     guidance_scale: float = 30.0,
-    true_cfg_scale: float = 4.0,
     num_images_per_prompt: int = 1,
     max_sequence_length: int = 512,
     seed: int = 0,
@@ -152,6 +156,11 @@ def run_dual_mask_inpainting(
     generative_refinement_mask_path = Path(generative_refinement_mask_path)
     output_path = Path(output_path)
 
+    original_image = (
+        load_image(str(original_image_path)).convert("RGB")
+        if original_image_path is not None
+        else None
+    )
     image = load_image(str(projected_image_path)).convert("RGB")
     geometry_constraint_mask = load_image(str(geometry_constraint_mask_path)).convert("L")
     generative_refinement_mask = load_image(str(generative_refinement_mask_path)).convert("L")
@@ -183,6 +192,7 @@ def run_dual_mask_inpainting(
             "prompt_2": prompt_2,
             "negative_prompt": negative_prompt,
             "image": image,
+            "original_image": original_image,
             "geometry_constraint_mask_image": geometry_constraint_mask,
             "generative_refinement_mask_image": generative_refinement_mask,
             "height": height,
@@ -190,7 +200,6 @@ def run_dual_mask_inpainting(
             "strength": strength,
             "num_inference_steps": num_inference_steps,
             "guidance_scale": guidance_scale,
-            "true_cfg_scale": true_cfg_scale,
             "num_images_per_prompt": num_images_per_prompt,
             "max_sequence_length": max_sequence_length,
             "generator": generator,

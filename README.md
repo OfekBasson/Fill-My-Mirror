@@ -430,12 +430,12 @@ geometry_model_name: "depth-anything/DA3-LARGE-1.1"
 | Model ID | Backend class | Notes |
 |---|---|---|
 | `black-forest-labs/FLUX.1-Fill-dev` | `DualMaskInterpolatedFluxFillPipeline` | Default; native inpainting backend built on `FluxFillPipeline` |
-| `Qwen/Qwen-Image-Edit-2511` | `DualMaskInterpolatedQwenInpaintPipeline` | Native inpainting backend built on `QwenImageEditInpaintPipeline` |
+| `black-forest-labs/FLUX.2-klein-base-9B` | `DualMaskFlux2KleinInpaintPipeline` | Reference-guided inpainting; passes the original scene as `image` and the projected mirror view as `image_reference` |
 
 To switch, edit `configs/config.yaml`:
 
 ```yaml
-inpainting_model_name: "Qwen/Qwen-Image-Edit-2511"
+inpainting_model_name: "black-forest-labs/FLUX.1-Fill-dev"
 ```
 
 Both backends use the same dual-mask noise interpolation parameters `n` and
