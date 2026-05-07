@@ -108,41 +108,32 @@ class DualMaskFlux2KleinInpaintPipeline(Flux2KleinInpaintPipeline):
                 "(Klein uses a single mask_image)."
             )
 
-        call_kwargs = {
-            "num_inference_steps": num_inference_steps,
-            "guidance_scale": guidance_scale,
-            "height": height,
-            "width": width,
-            "padding_mask_crop": padding_mask_crop,
-            "sigmas": sigmas,
-            "num_images_per_prompt": num_images_per_prompt,
-            "generator": generator,
-            "latents": latents,
-            "prompt_embeds": prompt_embeds,
-            "negative_prompt_embeds": negative_prompt_embeds,
-            "max_sequence_length": max_sequence_length,
-            "text_encoder_out_layers": text_encoder_out_layers,
-        }
-        for param, value in call_kwargs.items():
-            default = self._KLEIN_DEFAULTS[param]
-            if value != default:
-                logger.info(
-                    "FLUX.2-Klein: %s overridden from default %r to %r",
-                    param,
-                    default,
-                    value,
-                )
 
         return super().__call__(
+            # Normal until here
             prompt=prompt,
             image=resolved_image,
             mask_image=resolved_mask,
             image_reference=resolved_reference,
             strength=strength,
+            
+            
             output_type=output_type,
             return_dict=return_dict,
             attention_kwargs=attention_kwargs,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-            **call_kwargs,
+            # Guidance scale is problematic so it's not in use for now.
+            # guidance_scale=guidance_scale,
+            height=height,
+            width=width,
+            padding_mask_crop=padding_mask_crop,
+            sigmas=sigmas,
+            num_images_per_prompt=num_images_per_prompt,
+            generator=generator,
+            latents=latents,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            max_sequence_length=max_sequence_length,
+            text_encoder_out_layers=text_encoder_out_layers,
         )
