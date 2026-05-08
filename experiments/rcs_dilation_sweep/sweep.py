@@ -40,7 +40,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from fill_my_mirror.loaders import BlenderSampleLoader, BlenderSample
+from fill_my_mirror.loaders import BlenderSampleLoader, GTGeometrySample
 from fill_my_mirror.evaluation.rcs_mask_computation import (
     _ensure_mast3r,
     _run_mast3r_correspondences,
@@ -203,7 +203,7 @@ def _evaluate_radii(
 
 def process_sample(
     sample_idx: int,
-    sample: BlenderSample,
+    sample: GTGeometrySample,
     radii: Sequence[int],
     iterations_list: Sequence[int],
     blender_path: Path,
@@ -290,7 +290,7 @@ def process_sample(
 
 def redilate_sample(
     sample_idx: int,
-    sample: BlenderSample,
+    sample: GTGeometrySample,
     radii: Sequence[int],
     iterations_list: Sequence[int],
     output_dir: Path,

@@ -35,6 +35,7 @@ dependencies = [
     "clip @ git+https://github.com/openai/CLIP.git",
     "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183",
     "pandas>=2.0.0",
+    "h5py>=3.10.0",
     "bitsandbytes>=0.46.1",
 ]
 

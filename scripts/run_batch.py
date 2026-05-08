@@ -39,9 +39,9 @@ from pathlib import Path
 import yaml
 
 from fill_my_mirror.geometry import estimate_geometry
-from fill_my_mirror.projection import run_projection
+from fill_my_mirror.projection import run_projection_single_mirror
 from fill_my_mirror.dual_mask_inpainting import load_inpainting_pipeline, run_dual_mask_inpainting
-from fill_my_mirror.loaders import RealImageSampleLoader, BlenderSampleLoader
+from fill_my_mirror.loaders import RealImageSampleLoader, BlenderSampleLoader, MirrorBenchV2SampleLoader
 from fill_my_mirror.utils import check_and_fix_aspect_ratio
 
 DEFAULT_CONFIG_PATH = Path("configs/config.yaml")
@@ -65,8 +65,8 @@ def main() -> None:
 
     # --- required ---
     parser.add_argument(
-        "--dataset", type=str, required=True, choices=["real", "blender"],
-        help="Which HuggingFace dataset to use ('real' or 'blender').",
+        "--dataset", type=str, required=True, choices=["real", "blender", "mirrorbench_v2"],
+        help="Which dataset to use: 'real', 'blender', or 'mirrorbench_v2'.",
     )
     parser.add_argument(
         "--output-dir", type=str, required=True,
@@ -108,6 +108,15 @@ def main() -> None:
         "--blender-path", type=str, default=None,
         help="Path to the Blender executable. Overrides the config file value.",
     )
+    parser.add_argument(
+        "--use-estimated-geometry",
+        action="store_true",
+        default=False,
+        help=(
+            "Estimate geometry from the image using the geometry model instead of using "
+            "ground-truth geometry. Only relevant for --dataset blender or mirrorbench_v2."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -120,10 +129,15 @@ def main() -> None:
             "Please install it first with: bash scripts/install_blender.sh"
         )
 
+    if args.dataset == "real" and args.use_estimated_geometry:
+        print("Note: --use-estimated-geometry has no effect for --dataset real (always estimated).")
+
     if args.dataset == "real":
-        loader = RealImageSampleLoader(config["hf_dataset_repo"])
+        loader = RealImageSampleLoader()
+    elif args.dataset == "blender":
+        loader = BlenderSampleLoader()
     else:
-        loader = BlenderSampleLoader(config["hf_blender_dataset_repo"])
+        loader = MirrorBenchV2SampleLoader()
 
     dataset_size = len(loader)
     start = args.start_index
@@ -160,13 +174,14 @@ def main() -> None:
 
         print(f"[{i + 1}/{total}] index {index} — processing ...")
 
-        sample = loader.load(index)
+        use_estimated = True if args.dataset == "real" else args.use_estimated_geometry
+        sample = loader.load(index, use_estimated_geometry=use_estimated)
         prompt = args.prompt or sample.prompt or config["prompt"]
         width = check_and_fix_aspect_ratio(sample.image_path, int(args.height), int(args.width))
 
         geometry = estimate_geometry(sample, config["geometry_model_name"])
 
-        projection = run_projection(
+        projection = run_projection_single_mirror(
             geometry_output=geometry,
             image_path=sample.image_path,
             mirror_mask_path=sample.mask_path,

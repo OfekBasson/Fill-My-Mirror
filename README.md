@@ -160,7 +160,7 @@ python -m fill_my_mirror --hf-index 0
 
 | Argument | Description |
 |---|---|
-| `--hf-index INDEX` | Index of a sample from the HuggingFace dataset (0 to dataset size − 1). The dataset repo is read from `hf_dataset_repo` or `hf_blender_dataset_repo` in the config file. The sample's prompt is used as the prompt unless `--prompt` is also given. |
+| `--hf-index INDEX` | Index of a sample from the dataset (0 to dataset size − 1). Used with the real-images dataset by default, with the Blender dataset when `--use-blender-data` is set, or with the MirrorBench V2 dataset when `--use-mirrorbench-data` is set. The sample's prompt is used as the prompt unless `--prompt` is also given. |
 
 ## Optional arguments
 
@@ -180,6 +180,7 @@ python -m fill_my_mirror --hf-index 0
 | `--max-sequence-length` | `512` | Maximum text sequence length |
 | `--seed` | `0` | Random seed for reproducibility |
 | `--use-blender-data` | `False` | Load a sample from the Blender HuggingFace dataset. Requires `--hf-index`. When set, geometry is read directly from the dataset (no MoGe inference). |
+| `--use-mirrorbench-data` | `False` | Load a sample from the MirrorBench V2 (SynMirrorV2) dataset. Requires `--hf-index`. See [MirrorBench V2 setup](#mirrorbench-v2-synmirrorv2). |
 | `--n` | `6.0` | Power `n` for the alpha^n interpolation |
 | `--t-prime` | `750.0` | First timestep threshold for mask interpolation |
 
@@ -242,7 +243,7 @@ python scripts/run_batch.py --dataset real --output-dir outputs/batch_real/
 
 | Argument | Choices | Description |
 |---|---|---|
-| `--dataset` | `real`, `blender` | Which HuggingFace dataset to use |
+| `--dataset` | `real`, `blender`, `mirrorbench_v2` | Which dataset to use |
 | `--output-dir` | | Root output directory. Results saved to `{output_dir}/seed_{seed}/{index}.png` |
 
 **Optional:**
@@ -328,7 +329,7 @@ python scripts/evaluate.py batch \
 | Argument | Choices | Description |
 |---|---|---|
 | `--results-dir` | | Directory containing result PNGs named `{index}.png` |
-| `--dataset` | `real`, `blender` | Which HuggingFace dataset to load ground truth from |
+| `--dataset` | `real`, `blender`, `mirrorbench_v2` | Which dataset to load ground truth from |
 | `--output-dir` | | Directory to save per-sample and aggregate CSVs |
 
 **`batch` arguments — optional:**
@@ -388,6 +389,51 @@ Contains 15 rendered Blender scenes with mirrors, including ground-truth mirror 
 | `depth` | float32 (800×800) | Depth map of the scene |
 | `intrinsics` | float32 (3×3) | Camera intrinsics matrix |
 
+### [MirrorBench V2 (SynMirrorV2)](https://huggingface.co/datasets/ankitIIsc/SynMirrorV2)
+
+A large-scale synthetic benchmark from [MirrorVerse (CVPR'25)](https://arxiv.org/abs/2504.15397) containing 207K rendered scenes. The HDF5 files are distributed as tar archives on [HuggingFace](https://huggingface.co/datasets/ankitIIsc/SynMirrorV2/tree/main) and must be downloaded and extracted before use. The split CSV (`test.csv`) is downloaded automatically.
+
+**Setup:**
+
+Run the provided download script to fetch and extract all archives:
+
+```bash
+python scripts/download_mirrorbench_v2.py
+```
+
+To download and extract a single batch only:
+
+```bash
+python scripts/download_mirrorbench_v2.py --batch 0
+```
+
+After extraction the directory should look like:
+
+```
+data/mirrorbench_v2/
+    hf-objaverse-v4/
+        000-010/
+            8014aa16057a495795f7bf8a02a3ebe0/
+                0.hdf5  1.hdf5  2.hdf5
+        ...
+    abo_v4/
+        ...
+```
+
+Geometry is derived from the HDF5 depth map and camera intrinsics — no MoGe inference is run.
+
+Run a single sample:
+
+```bash
+python -m fill_my_mirror --use-mirrorbench-data --hf-index 0
+```
+
+Run batch inference:
+
+```bash
+python scripts/run_batch.py --dataset mirrorbench_v2 --output-dir outputs/batch_mirrorbench/
+```
+
 ---
 <a id="default-configuration"></a>
 
@@ -401,8 +447,6 @@ default_output_path: "outputs/result.png"
 blender_path: "external/blender/blender-4.4.3-linux-x64/blender"
 geometry_model_name: "Ruicheng/moge-2-vitl-normal"
 inpainting_model_name: "black-forest-labs/FLUX.1-Fill-dev"
-hf_dataset_repo: "OfekBassonResearch/Fill-My-Mirror"
-hf_blender_dataset_repo: "OfekBassonResearch/Fill-My-Mirror-Blender"
 mast3r_model_name: "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 ```
 

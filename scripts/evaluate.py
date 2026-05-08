@@ -19,8 +19,9 @@ Two subcommands are available:
         [--config configs/config.yaml] [--rcs-dilation 5]
 
 For ``batch`` the script automatically picks the constraint mask method:
-  - ``--dataset real``    → Reflection Consistency Score via MASt3R
-  - ``--dataset blender`` → GT geometry projection via Blender
+  - ``--dataset real``           → Reflection Consistency Score via MASt3R
+  - ``--dataset blender``        → GT geometry projection via Blender
+  - ``--dataset mirrorbench_v2`` → GT geometry projection via Blender (same as blender)
 
 Result PNGs in ``--results-dir`` are expected to be named ``{index}.png``.
 """
@@ -40,7 +41,7 @@ from fill_my_mirror.evaluation import (
     MetricsInput,
     GeneratedImage,
 )
-from fill_my_mirror.loaders import RealImageSampleLoader, BlenderSampleLoader
+from fill_my_mirror.loaders import RealImageSampleLoader, BlenderSampleLoader, MirrorBenchV2SampleLoader
 
 DEFAULT_CONFIG_PATH = Path("configs/config.yaml")
 
@@ -100,15 +101,17 @@ def _run_batch(args: argparse.Namespace, config: dict) -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    dataset_type = args.dataset  # "real" or "blender"
+    dataset_type = args.dataset  # "real", "blender", or "mirrorbench_v2"
     use_rcs = dataset_type == "real"
 
     blender_path = Path(args.blender_path) if args.blender_path is not None else Path(config["blender_path"])
 
     if dataset_type == "real":
-        loader = RealImageSampleLoader(config["hf_dataset_repo"])
+        loader = RealImageSampleLoader()
+    elif dataset_type == "blender":
+        loader = BlenderSampleLoader()
     else:
-        loader = BlenderSampleLoader(config["hf_blender_dataset_repo"])
+        loader = MirrorBenchV2SampleLoader()
 
     result_pngs = sorted(results_dir.glob("*.png"), key=lambda p: int(p.stem))
     if not result_pngs:
@@ -258,8 +261,8 @@ def main() -> None:
         help="Directory containing result PNGs named {index}.png.",
     )
     batch_parser.add_argument(
-        "--dataset", type=str, required=True, choices=["real", "blender"],
-        help="Which HuggingFace dataset to load ground truth from.",
+        "--dataset", type=str, required=True, choices=["real", "blender", "mirrorbench_v2"],
+        help="Which dataset to load ground truth from ('real', 'blender', or 'mirrorbench_v2').",
     )
     batch_parser.add_argument(
         "--output-dir", type=str, required=True,

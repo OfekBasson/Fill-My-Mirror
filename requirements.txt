@@ -18,4 +18,5 @@ scikit-image>=0.21.0
 lpips>=0.1.4
 git+https://github.com/openai/CLIP.git
 pandas>=2.0.0
+h5py>=3.10.0
 bitsandbytes>=0.46.1

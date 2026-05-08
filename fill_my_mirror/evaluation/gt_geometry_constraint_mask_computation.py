@@ -17,13 +17,13 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from fill_my_mirror.loaders import BlenderSample
+from fill_my_mirror.loaders import GTGeometrySample
 
 logger = logging.getLogger(__name__)
 
 
 def compute_gt_geometry_constraint_mask(
-    sample: BlenderSample,
+    sample: GTGeometrySample,
     blender_path: str | Path,
     mask_stem: str,
 ) -> Path:

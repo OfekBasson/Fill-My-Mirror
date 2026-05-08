@@ -11,7 +11,7 @@ from PIL import Image
 import utils3d
 from moge.model.v2 import MoGeModel
 
-from fill_my_mirror.loaders import Sample, RealImageSample, BlenderSample
+from fill_my_mirror.loaders import Sample, EstimatedGeometrySample, GTGeometrySample
 from fill_my_mirror.plane import Plane, fit_plane_svd, orient_plane_toward_camera
 
 
@@ -96,8 +96,8 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
         self.model = MoGeModel.from_pretrained(model_name).to(self.device)
         self.model.eval()
 
-    def get_geometry(self, sample: RealImageSample) -> GeometryOutputBase:
-        assert isinstance(sample, RealImageSample), (
+    def get_geometry(self, sample: EstimatedGeometrySample) -> GeometryOutputBase:
+        assert isinstance(sample, EstimatedGeometrySample), (
             f"MoGeGeometryProcessor expects a RealImageSample, got {type(sample).__name__}"
         )
 
@@ -105,7 +105,7 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
             return self._get_geometry_multiple_mirrors(sample)
         return self._get_geometry_single_mirror(sample)
 
-    def _get_geometry_single_mirror(self, sample: RealImageSample) -> GeometryOutputSingleMirror:
+    def _get_geometry_single_mirror(self, sample: EstimatedGeometrySample) -> GeometryOutputSingleMirror:
         image = cv2.imread(sample.image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
@@ -143,7 +143,7 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
             mirror_entry=entry,
         )
 
-    def _get_geometry_multiple_mirrors(self, sample: RealImageSample) -> GeometryOutputMultipleMirrors:
+    def _get_geometry_multiple_mirrors(self, sample: EstimatedGeometrySample) -> GeometryOutputMultipleMirrors:
         image = cv2.imread(sample.image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
@@ -306,7 +306,7 @@ GEOMETRY_MODEL_REGISTRY: dict[str, type] = {
 
 
 def estimate_geometry(sample: Sample, model_name: str) -> GeometryOutputBase:
-    if isinstance(sample, BlenderSample):
+    if isinstance(sample, GTGeometrySample):
         return BlenderGeometryProcessor().get_geometry(sample)
 
     processor_class = GEOMETRY_MODEL_REGISTRY.get(model_name)
@@ -326,7 +326,7 @@ class BlenderGeometryProcessor(GeometryProcessorBase):
         pass
 
     def get_geometry(self, sample: Sample) -> GeometryOutputSingleMirror:
-        assert isinstance(sample, BlenderSample), (
+        assert isinstance(sample, GTGeometrySample), (
             f"BlenderGeometryProcessor expects a BlenderSample, got {type(sample).__name__}"
         )
 
