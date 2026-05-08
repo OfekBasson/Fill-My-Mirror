@@ -37,7 +37,7 @@ from PIL import Image
 from fill_my_mirror.evaluation import (
     compute_metrics,
     compute_rcs_mask,
-    compute_gt_geometry_constraint_mask,
+    compute_constrained_pixels_gt_geometry_mask,
     MetricsInput,
     GeneratedImage,
 )
@@ -159,7 +159,7 @@ def _run_batch(args: argparse.Namespace, config: dict) -> None:
                     f"Blender executable not found at '{blender_path}'. "
                     "Set blender_path in the config or pass --blender-path."
                 )
-            constrained_mask_path = compute_gt_geometry_constraint_mask(
+            constrained_mask_path = compute_constrained_pixels_gt_geometry_mask(
                 sample=sample,
                 blender_path=blender_path,
                 mask_stem=str(index),

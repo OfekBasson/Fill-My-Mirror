@@ -49,8 +49,8 @@ from fill_my_mirror.evaluation.rcs_mask_computation import (
     _pil_to_binary,
     _MAST3R_IMG_SIZE,
 )
-from fill_my_mirror.evaluation.gt_geometry_constraint_mask_computation import (
-    compute_gt_geometry_constraint_mask,
+from fill_my_mirror.evaluation.constrained_pixels_gt_geometry_mask_computation import (
+    compute_constrained_pixels_gt_geometry_mask,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -220,7 +220,7 @@ def process_sample(
     # 1. Ground-truth mask
     # ------------------------------------------------------------------
     logger.info("[%d] Computing GT geometry constraint mask ...", sample_idx)
-    gt_mask_path = compute_gt_geometry_constraint_mask(
+    gt_mask_path = compute_constrained_pixels_gt_geometry_mask(
         sample=sample,
         blender_path=blender_path,
         mask_stem=str(sample_idx),

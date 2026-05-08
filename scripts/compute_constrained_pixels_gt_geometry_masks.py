@@ -1,8 +1,8 @@
 """
-Compute generative_refinement_mask for every sample in the Blender or MirrorBench-V2
-dataset by reading projection outputs already stored in R2.
+Compute the constrained-pixels GT-geometry mask for every sample in the Blender or
+MirrorBench-V2 dataset by reading projection outputs already stored in R2.
 
-    generative_refinement_mask = mirror_mask & ~geometry_constraint_mask
+    constrained_pixels_mask = mirror_mask & ~geometry_constraint_mask
 
 The geometry_constraint_mask and mirror mask (generative_refinement_mask.png) are
 downloaded from R2 at:
@@ -10,9 +10,9 @@ downloaded from R2 at:
     {dataset}/{geom_subdir}/{index}/generative_refinement_mask.png
 
 Usage:
-    python scripts/compute_generative_refinement_masks.py \
+    python scripts/compute_constrained_pixels_gt_geometry_masks.py \
         --dataset mirrorbench_v2 \
-        --output-dir outputs/refinement_masks/mirrorbench_v2/
+        --output-dir outputs/constrained_pixels_masks/mirrorbench_v2/
 """
 
 from __future__ import annotations
@@ -87,8 +87,8 @@ def main() -> None:
                 inpainting_mask = np.asarray(Image.open(tmp / "constraint.png").convert("L")) > 127
                 mirror_mask = np.asarray(Image.open(tmp / "mirror.png").convert("L")) > 127
 
-            refinement_mask = mirror_mask & ~inpainting_mask
-            Image.fromarray((refinement_mask.astype(np.uint8) * 255), mode="L").save(out_path)
+            constrained_mask = mirror_mask & ~inpainting_mask
+            Image.fromarray((constrained_mask.astype(np.uint8) * 255), mode="L").save(out_path)
             print(f"{label} — saved")
 
         except Exception:
