@@ -7,4 +7,5 @@ from .core import (
     MoGeGeometryProcessor,
     BlenderGeometryProcessor,
     estimate_geometry,
+    LowFiniteMirrorPointsRatioError,
 )

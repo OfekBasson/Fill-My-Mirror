@@ -3,7 +3,7 @@ import gc
 from pathlib import Path
 import torch
 import yaml
-from fill_my_mirror.geometry import estimate_geometry
+from fill_my_mirror.geometry import estimate_geometry, LowFiniteMirrorPointsRatioError
 from fill_my_mirror.projection import run_projection_single_mirror, run_projection_multiple_mirrors
 from fill_my_mirror.geometry import GeometryOutputMultipleMirrors
 from fill_my_mirror.dual_mask_inpainting import run_dual_mask_inpainting
@@ -244,7 +244,34 @@ def main():
             "Please install it first with: bash scripts/install_blender.sh"
         )
 
-    geometry = estimate_geometry(sample, config["geometry_model_name"])
+    try:
+        geometry = estimate_geometry(sample, config["geometry_model_name"])
+    except LowFiniteMirrorPointsRatioError as exc:
+        print(f"Warning: {exc}")
+        print("Falling back to inpainting without geometry projection.")
+        run_dual_mask_inpainting(
+            prompt=prompt,
+            projected_image_path=image_path,
+            geometry_constraint_mask_path=mask_path,
+            generative_refinement_mask_path=mask_path,
+            output_path=output_path,
+            original_image_path=image_path,
+            model_name=config["inpainting_model_name"],
+            prompt_2=args.prompt_2,
+            strength=args.strength,
+            num_inference_steps=args.num_inference_steps,
+            guidance_scale=args.guidance_scale,
+            num_images_per_prompt=args.num_images_per_prompt,
+            max_sequence_length=args.max_sequence_length,
+            seed=args.seed,
+            height=args.height,
+            width=width,
+            n=args.n,
+            t_prime=args.t_prime,
+        )
+        print("Final result saved to:", output_path)
+        return
+
     gc.collect()
     torch.cuda.empty_cache()
 

@@ -18,6 +18,27 @@ from fill_my_mirror.plane import Plane, fit_plane_svd, orient_plane_toward_camer
 TEMP_OUTPUT_DIR = Path("temp_outputs")
 TEMP_OUTPUT_DIR.mkdir(exist_ok=True)
 
+_MIN_FINITE_RATIO = 0.01
+
+
+class LowFiniteMirrorPointsRatioError(RuntimeError):
+    """Raised when the ratio of finite to total 3D points inside the mirror mask is too low.
+
+    This typically happens when the geometry model (e.g. MoGe) cannot reconstruct
+    the mirror surface because it was masked out during inference. With fewer than
+    1% finite points the fitted plane is unreliable and projection is skipped.
+    """
+    def __init__(self, finite: int, total: int):
+        self.finite = finite
+        self.total = total
+        self.ratio = finite / total if total > 0 else 0.0
+        super().__init__(
+            f"Only {finite}/{total} ({self.ratio:.1%}) mirror points are finite — "
+            f"below the {_MIN_FINITE_RATIO:.0%} threshold. "
+            "The geometry model could not reconstruct the mirror surface. "
+            "Projection will be skipped and the mirror filled entirely by inpainting."
+        )
+
 
 # (3D-points, path-tuple, rgb-color, per-mirror-mesh-path, plane)
 MirrorEntry = tuple[np.ndarray, tuple[int, ...], tuple[int, int, int], Path, Plane]
@@ -136,8 +157,26 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
         intrinsics = output["intrinsics"].cpu().numpy()
 
         mirror_pts = points[mirror_mask]
+        finite_mirror_pts = mirror_pts[np.isfinite(mirror_pts).all(axis=1)]
+        ratio = len(finite_mirror_pts) / len(mirror_pts) if len(mirror_pts) > 0 else 0.0
+        if ratio < _MIN_FINITE_RATIO:
+            raise LowFiniteMirrorPointsRatioError(len(finite_mirror_pts), len(mirror_pts))
         plane = orient_plane_toward_camera(fit_plane_svd(mirror_pts))
+        import json
+        debug_info = {
+            "mirror_pts_total": int(mirror_pts.shape[0]),
+            "mirror_pts_finite": int(finite_mirror_pts.shape[0]),
+            "finite_ratio": round(ratio, 6),
+            "mirror_pts_min": finite_mirror_pts.min(axis=0).tolist() if len(finite_mirror_pts) else None,
+            "mirror_pts_max": finite_mirror_pts.max(axis=0).tolist() if len(finite_mirror_pts) else None,
+            "mirror_pts_mean": finite_mirror_pts.mean(axis=0).tolist() if len(finite_mirror_pts) else None,
+            "mirror_pts_std": finite_mirror_pts.std(axis=0).tolist() if len(finite_mirror_pts) else None,
+            "plane_point": plane.point.tolist(),
+            "plane_normal": plane.normal.tolist(),
+        }
+        (tmp_dir / "debug_plane.json").write_text(json.dumps(debug_info, indent=2))
         mesh_path = _build_mesh(image, points, depth, mirror_mask, output_path=tmp_dir / "geometry_mesh.glb")
+        _debug_export_plane(plane, finite_mirror_pts, output_path=tmp_dir / "debug_plane.glb")
 
         entry: MirrorEntry = (mirror_pts, (0,), (0, 0, 0), mesh_path, plane)
         return GeometryOutputSingleMirror(
@@ -355,6 +394,38 @@ class BlenderGeometryProcessor(GeometryProcessorBase):
         )
 
 
+def _debug_export_plane(plane: Plane, mirror_pts: np.ndarray, output_path: Path) -> None:
+    """Export a flat quad mesh visualising the fitted plane. DEBUG — remove before release."""
+    normal = plane.normal / (np.linalg.norm(plane.normal) + 1e-8)
+    center = plane.point
+
+    # Build two orthogonal tangent vectors in the plane
+    ref = np.array([0.0, 1.0, 0.0]) if abs(normal[1]) < 0.9 else np.array([1.0, 0.0, 0.0])
+    u = np.cross(normal, ref)
+    u /= np.linalg.norm(u) + 1e-8
+    v = np.cross(normal, u)
+    v /= np.linalg.norm(v) + 1e-8
+
+    # Size quad to span the mirror point cloud
+    proj_u = mirror_pts @ u
+    proj_v = mirror_pts @ v
+    half_u = (proj_u.max() - proj_u.min()) / 2 * 1.1
+    half_v = (proj_v.max() - proj_v.min()) / 2 * 1.1
+
+    vertices = np.array([
+        center - half_u * u - half_v * v,
+        center + half_u * u - half_v * v,
+        center + half_u * u + half_v * v,
+        center - half_u * u + half_v * v,
+    ], dtype=np.float32)
+    faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
+
+    plane_mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+    plane_mesh.visual.vertex_colors = np.array([[255, 0, 0, 180]] * 4, dtype=np.uint8)
+    plane_mesh.export(output_path)
+    print(f"[debug] plane mesh saved to {output_path}")
+
+
 def _build_mesh(
     image: np.ndarray,
     points: np.ndarray,
@@ -377,7 +448,8 @@ def _build_mesh(
         utils3d.numpy.normal_map_edge(normals, tol=5, mask=normals_mask)
     )
 
-    mesh_mask = surface_mask & (~mirror_mask)
+    finite_mask = np.isfinite(points).all(axis=-1)
+    mesh_mask = surface_mask & (~mirror_mask) & finite_mask
 
     uv_map = utils3d.np.uv_map((height, width))
     faces, vertices, _, vertex_uvs = utils3d.np.build_mesh_from_map(
