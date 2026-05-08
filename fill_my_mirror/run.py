@@ -164,7 +164,6 @@ def main():
             "ground-truth geometry. Only relevant for --use-blender-data and --use-mirrorbench-data."
         ),
     )
-
     args = parser.parse_args()
 
     using_blender_hf = args.use_blender_data

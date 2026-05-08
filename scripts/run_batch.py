@@ -117,7 +117,6 @@ def main() -> None:
             "ground-truth geometry. Only relevant for --dataset blender or mirrorbench_v2."
         ),
     )
-
     args = parser.parse_args()
 
     config = load_config(Path(args.config))
