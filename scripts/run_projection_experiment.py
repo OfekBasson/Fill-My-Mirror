@@ -201,7 +201,7 @@ def main() -> None:
         t_start = time.perf_counter()
         try:
             print(f"{label} — estimating geometry ...")
-            geometry = estimate_geometry(sample, config["geometry_model_name"])
+            geometry = estimate_geometry(sample, config["geometry_model_name"], tmp_dir=out_dir)
             gc.collect()
             torch.cuda.empty_cache()
 
@@ -211,12 +211,12 @@ def main() -> None:
                 image_path=sample.image_path,
                 mirror_mask_path=sample.mask_path,
                 blender_path=blender_path,
+                projected_image_path=out_dir / "projected_image.png",
+                geometry_constraint_mask_path=out_dir / "geometry_constraint_mask.png",
+                tmp_dir=out_dir,
             )
 
             t_elapsed = time.perf_counter() - t_start
-
-            shutil.copy(projection.projected_image_path, out_dir / "projected_image.png")
-            shutil.copy(projection.geometry_constraint_mask_path, out_dir / "geometry_constraint_mask.png")
             (out_dir / "timing.json").write_text(json.dumps({"projection_time_seconds": round(t_elapsed, 2)}))
 
             print(f"{label} — done ({t_elapsed:.1f}s), saved to {out_dir}, queued for upload")

@@ -96,16 +96,18 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
         self.model = MoGeModel.from_pretrained(model_name).to(self.device)
         self.model.eval()
 
-    def get_geometry(self, sample: EstimatedGeometrySample) -> GeometryOutputBase:
+    def get_geometry(self, sample: EstimatedGeometrySample, tmp_dir: Path | None = None) -> GeometryOutputBase:
         assert isinstance(sample, EstimatedGeometrySample), (
             f"MoGeGeometryProcessor expects a RealImageSample, got {type(sample).__name__}"
         )
+        tmp_dir = tmp_dir or TEMP_OUTPUT_DIR
 
         if sample.mask_paths:
-            return self._get_geometry_multiple_mirrors(sample)
-        return self._get_geometry_single_mirror(sample)
+            return self._get_geometry_multiple_mirrors(sample, tmp_dir=tmp_dir)
+        return self._get_geometry_single_mirror(sample, tmp_dir=tmp_dir)
 
-    def _get_geometry_single_mirror(self, sample: EstimatedGeometrySample) -> GeometryOutputSingleMirror:
+    def _get_geometry_single_mirror(self, sample: EstimatedGeometrySample, tmp_dir: Path | None = None) -> GeometryOutputSingleMirror:
+        tmp_dir = tmp_dir or TEMP_OUTPUT_DIR
         image = cv2.imread(sample.image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
@@ -135,7 +137,7 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
 
         mirror_pts = points[mirror_mask]
         plane = orient_plane_toward_camera(fit_plane_svd(mirror_pts))
-        mesh_path = _build_mesh(image, points, depth, mirror_mask)
+        mesh_path = _build_mesh(image, points, depth, mirror_mask, output_path=tmp_dir / "geometry_mesh.glb")
 
         entry: MirrorEntry = (mirror_pts, (0,), (0, 0, 0), mesh_path, plane)
         return GeometryOutputSingleMirror(
@@ -143,7 +145,8 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
             mirror_entry=entry,
         )
 
-    def _get_geometry_multiple_mirrors(self, sample: EstimatedGeometrySample) -> GeometryOutputMultipleMirrors:
+    def _get_geometry_multiple_mirrors(self, sample: EstimatedGeometrySample, tmp_dir: Path | None = None) -> GeometryOutputMultipleMirrors:
+        tmp_dir = tmp_dir or TEMP_OUTPUT_DIR
         image = cv2.imread(sample.image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
@@ -170,7 +173,7 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
             colors.append(color)
             colored_image[mask] = color
 
-        colored_image_path = TEMP_OUTPUT_DIR / "colored_input_image.png"
+        colored_image_path = tmp_dir / "colored_input_image.png"
         cv2.imwrite(str(colored_image_path), cv2.cvtColor(colored_image, cv2.COLOR_RGB2BGR))
 
         image_tensor = (
@@ -194,7 +197,7 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
             plane_i = orient_plane_toward_camera(fit_plane_svd(mirror_pts_i))
             mesh_i_path = _build_mesh(
                 colored_image, points, depth, mask_i,
-                output_path=TEMP_OUTPUT_DIR / f"geometry_mesh_mirror_{i}.glb",
+                output_path=tmp_dir / f"geometry_mesh_mirror_{i}.glb",
             )
             entry: MirrorEntry = (mirror_pts_i, (i,), color_i, mesh_i_path, plane_i)
             entries.append(entry)
@@ -213,12 +216,12 @@ class DepthAnythingGeometryProcessor(GeometryProcessorBase):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = DepthAnything3.from_pretrained(model_name).to(self.device)
 
-    def get_geometry(self, sample: Sample) -> GeometryOutputBase:
+    def get_geometry(self, sample: Sample, tmp_dir: Path | None = None) -> GeometryOutputBase:
         if isinstance(sample.mask_paths, list) and len(sample.mask_paths) > 1:
             raise NotImplementedError("Multi-mirror not yet supported for DepthAnythingGeometryProcessor")
-        return self._get_geometry_single_mirror(sample)
+        return self._get_geometry_single_mirror(sample, tmp_dir=tmp_dir)
 
-    def _get_geometry_single_mirror(self, sample) -> GeometryOutputSingleMirror:
+    def _get_geometry_single_mirror(self, sample, tmp_dir: Path | None = None) -> GeometryOutputSingleMirror:
         image_bgr = cv2.imread(str(sample.image_path))
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
@@ -280,8 +283,9 @@ class DepthAnythingGeometryProcessor(GeometryProcessorBase):
         if mirror_pts.shape[0] < 3:
             return GeometryOutputSingleMirror(intrinsics=intrinsics, mirror_entry=None)
 
+        _tmp_dir = tmp_dir or TEMP_OUTPUT_DIR
         plane = orient_plane_toward_camera(fit_plane_svd(mirror_pts))
-        mesh_path = _build_mesh(image_rgb, points, depth, mirror_mask)
+        mesh_path = _build_mesh(image_rgb, points, depth, mirror_mask, output_path=_tmp_dir / "geometry_mesh.glb")
 
         sensor_width_mm = 36.0  # Blender default
         fx_norm = float(intrinsics[0, 0])
@@ -305,9 +309,12 @@ GEOMETRY_MODEL_REGISTRY: dict[str, type] = {
 }
 
 
-def estimate_geometry(sample: Sample, model_name: str) -> GeometryOutputBase:
+def estimate_geometry(sample: Sample, model_name: str, tmp_dir: Path | None = None) -> GeometryOutputBase:
+    tmp_dir = tmp_dir or TEMP_OUTPUT_DIR
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
     if isinstance(sample, GTGeometrySample):
-        return BlenderGeometryProcessor().get_geometry(sample)
+        return BlenderGeometryProcessor().get_geometry(sample, tmp_dir=tmp_dir)
 
     processor_class = GEOMETRY_MODEL_REGISTRY.get(model_name)
     if processor_class is None:
@@ -317,7 +324,7 @@ def estimate_geometry(sample: Sample, model_name: str) -> GeometryOutputBase:
             supported = ", ".join(sorted(GEOMETRY_MODEL_REGISTRY))
             raise ValueError(f"Unsupported geometry model `{model_name}`. Supported: {supported}")
 
-    return processor_class(model_name).get_geometry(sample)
+    return processor_class(model_name).get_geometry(sample, tmp_dir=tmp_dir)
 
 
 class BlenderGeometryProcessor(GeometryProcessorBase):
@@ -325,10 +332,11 @@ class BlenderGeometryProcessor(GeometryProcessorBase):
     def __init__(self):
         pass
 
-    def get_geometry(self, sample: Sample) -> GeometryOutputSingleMirror:
+    def get_geometry(self, sample: Sample, tmp_dir: Path | None = None) -> GeometryOutputSingleMirror:
         assert isinstance(sample, GTGeometrySample), (
             f"BlenderGeometryProcessor expects a BlenderSample, got {type(sample).__name__}"
         )
+        tmp_dir = tmp_dir or TEMP_OUTPUT_DIR
 
         image = cv2.imread(sample.image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -338,7 +346,7 @@ class BlenderGeometryProcessor(GeometryProcessorBase):
 
         mirror_pts = sample.points[mirror_mask]
         plane = orient_plane_toward_camera(fit_plane_svd(mirror_pts))
-        mesh_path = _build_mesh(image, sample.points, sample.depth, mirror_mask)
+        mesh_path = _build_mesh(image, sample.points, sample.depth, mirror_mask, output_path=tmp_dir / "geometry_mesh.glb")
 
         entry: MirrorEntry = (mirror_pts, (0,), (0, 0, 0), mesh_path, plane)
         return GeometryOutputSingleMirror(

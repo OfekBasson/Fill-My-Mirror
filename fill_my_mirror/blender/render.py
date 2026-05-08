@@ -19,11 +19,14 @@ def render_with_blender(
     output_path: str | Path,
     bw_output_path: str | Path,
     depth_output_path: str | Path | None = None,
+    tmp_dir: str | Path | None = None,
 ) -> None:
     blender_path = Path(blender_path)
     glb_path = Path(glb_path)
     output_path = Path(output_path)
     bw_output_path = Path(bw_output_path)
+    _tmp_dir = Path(tmp_dir) if tmp_dir is not None else TEMP_OUTPUT_DIR
+    _tmp_dir.mkdir(parents=True, exist_ok=True)
 
     if not blender_path.exists():
         raise FileNotFoundError(f"Blender not found at: {blender_path}")
@@ -38,7 +41,7 @@ def render_with_blender(
         depth_output_path = Path(depth_output_path)
         depth_output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    npz_path = TEMP_OUTPUT_DIR / "blender_render_inputs.npz"
+    npz_path = _tmp_dir / "blender_render_inputs.npz"
     np.savez(
         npz_path,
         intrinsics=intrinsics,

@@ -9,11 +9,23 @@ class Plane:
     normal: np.ndarray
 
 
-def fit_plane_svd(points: np.ndarray) -> "Plane":
+_MAX_SVD_POINTS = 4096
+
+
+def fit_plane_svd(points: np.ndarray, seed: int = 0) -> "Plane":
     if points.ndim != 2 or points.shape[1] != 3:
         raise ValueError(f"Expected points with shape (N, 3), got {points.shape}")
+
+    points = points[np.isfinite(points).all(axis=1)]
+
     if points.shape[0] < 3:
-        raise ValueError("Need at least 3 points to fit a plane.")
+        raise ValueError(
+            f"Need at least 3 finite points to fit a plane, got {points.shape[0]}."
+        )
+
+    if points.shape[0] > _MAX_SVD_POINTS:
+        rng = np.random.default_rng(seed)
+        points = points[rng.choice(points.shape[0], _MAX_SVD_POINTS, replace=False)]
 
     plane_point = points.mean(axis=0)
     centered = points - plane_point
