@@ -73,8 +73,8 @@ def main() -> None:
         label = f"[{i + 1}/{total}] index {index}"
         out_path = args.output_dir / f"{index}.png"
 
-        if args.skip_existing and out_path.exists():
-            print(f"{label} — skipping")
+        if args.skip_existing and r2.key_exists(f"{args.dataset}/{args.geom_subdir}/{index}/constrained_pixels_gt_geometry_mask.png"):
+            print(f"{label} — skipping (already in R2)")
             continue
 
         try:
@@ -89,7 +89,8 @@ def main() -> None:
 
             constrained_mask = mirror_mask & ~inpainting_mask
             Image.fromarray((constrained_mask.astype(np.uint8) * 255), mode="L").save(out_path)
-            print(f"{label} — saved")
+            r2.upload_file(out_path, f"{base}/constrained_pixels_gt_geometry_mask.png")
+            print(f"{label} — saved and uploaded")
 
         except Exception:
             print(f"{label} — ERROR")
