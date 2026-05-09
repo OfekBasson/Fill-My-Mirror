@@ -83,11 +83,18 @@ def load_inpainting_pipeline(
     model_name: str = "black-forest-labs/FLUX.1-Fill-dev",
     pipeline_class: type | None = None,
     torch_dtype: torch.dtype = torch.bfloat16,
+    gpu_id: int = 0,
 ) -> Any:
     """Load and return the inpainting pipeline.
 
     Call this once and pass the result to ``run_dual_mask_inpainting`` to avoid
     reloading the model on every iteration.
+
+    Parameters
+    ----------
+    gpu_id
+        Physical GPU index passed to ``enable_model_cpu_offload``.  Must match
+        the actual device number, not a CUDA_VISIBLE_DEVICES-remapped index.
     """
 
     if pipeline_class is None:
@@ -100,7 +107,7 @@ def load_inpainting_pipeline(
         model_name,
         torch_dtype=torch_dtype,
     )
-    pipe.enable_model_cpu_offload()
+    pipe.enable_model_cpu_offload(gpu_id=gpu_id)
     return pipe
 
 

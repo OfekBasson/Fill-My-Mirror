@@ -76,8 +76,6 @@ def _worker(
     base_params: dict,
     nt_combos: list[tuple[float, float]],
 ) -> None:
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-
     model_name = args_dict["model_name"]
     dataset = args_dict["dataset"]
     geom_subdir = args_dict["geom_subdir"]
@@ -95,7 +93,7 @@ def _worker(
         print(f"[GPU {gpu_id}] ERROR: {msg}")
 
     r2 = R2Client()
-    pipe = load_inpainting_pipeline(model_name=model_name)
+    pipe = load_inpainting_pipeline(model_name=model_name, gpu_id=gpu_id)
 
     model_slug = model_name.replace("/", "--")
 
