@@ -40,7 +40,6 @@ PIPELINE_SUPPORTED_KWARGS: dict[type, set[str]] = {
         "prompt",
         "image",
         "original_image",
-        "image_reference",
         "geometry_constraint_mask_image",
         "generative_refinement_mask_image",
         "height",
@@ -57,6 +56,7 @@ PIPELINE_SUPPORTED_KWARGS: dict[type, set[str]] = {
         "negative_prompt_embeds",
         "max_sequence_length",
         "text_encoder_out_layers",
+        "use_dual_mask",
     },
     DualMaskInterpolatedFluxFillPipeline: {
         "prompt",
@@ -74,6 +74,7 @@ PIPELINE_SUPPORTED_KWARGS: dict[type, set[str]] = {
         "generator",
         "n",
         "t_prime",
+        "use_dual_mask",
     },
 }
 
@@ -146,6 +147,7 @@ def run_dual_mask_inpainting(
     width: int = 1024,
     n: float = 6.0,
     t_prime: float = 750.0,
+    use_dual_mask: bool = True,
     torch_dtype: torch.dtype = torch.bfloat16,
     pipe: Any | None = None,
     edit_model_prompt_template: str = _DEFAULT_EDIT_MODEL_PROMPT_TEMPLATE,
@@ -205,6 +207,7 @@ def run_dual_mask_inpainting(
             "generator": generator,
             "n": n,
             "t_prime": t_prime,
+            "use_dual_mask": use_dual_mask,
         },
     )
     result = pipe(

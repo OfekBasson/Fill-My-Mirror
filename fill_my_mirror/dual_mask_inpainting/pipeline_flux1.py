@@ -184,6 +184,7 @@ class DualMaskInterpolatedFluxFillPipeline(FluxFillPipeline):
         max_sequence_length: int = 512,
         n: float = 6.0,
         t_prime: float = 750.0,
+        use_dual_mask: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -456,10 +457,10 @@ class DualMaskInterpolatedFluxFillPipeline(FluxFillPipeline):
                     return_dict=False,
                 )[0]
 
-                if t <= t_prime:
+                if use_dual_mask and t <= t_prime:
                     alpha = (t.float() / T).clamp(0, 1)
                     interpolation_scale = alpha.pow(n)
-                    
+
                     noise_pred_generative_refinement_mask = self.transformer(
                         hidden_states=torch.cat((latents, generative_refinement_masked_image_latents), dim=2),
                         timestep=timestep / 1000,
@@ -471,7 +472,7 @@ class DualMaskInterpolatedFluxFillPipeline(FluxFillPipeline):
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
-                    
+
                     mixed = interpolation_scale * noise_pred_geometry_constraint_mask + (1 - interpolation_scale) * noise_pred_generative_refinement_mask
 
                     reduce_dims = (1, 2)
@@ -484,7 +485,7 @@ class DualMaskInterpolatedFluxFillPipeline(FluxFillPipeline):
                         mixed, dim=reduce_dims, keepdim=True
                     )
 
-                    noise_pred = mixed * (target_norm / (mixed_norm + 1e-8))                    
+                    noise_pred = mixed * (target_norm / (mixed_norm + 1e-8))
                 else:
                     noise_pred = noise_pred_geometry_constraint_mask
                     

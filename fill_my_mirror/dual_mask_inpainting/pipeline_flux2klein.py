@@ -69,10 +69,8 @@ class DualMaskFlux2KleinInpaintPipeline(Flux2KleinInpaintPipeline):
         prompt: str | list[str] | None = None,
         image: Any | None = None,
         original_image: Any | None = None,
-        image_reference: Any | None = None,
         geometry_constraint_mask_image: Any | None = None,
         generative_refinement_mask_image: Any | None = None,
-        mask_image: Any | None = None,
         height: int | None = None,
         width: int | None = None,
         padding_mask_crop: int | None = None,
@@ -92,32 +90,25 @@ class DualMaskFlux2KleinInpaintPipeline(Flux2KleinInpaintPipeline):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
         text_encoder_out_layers: tuple[int, ...] = (9, 18, 27),
-        # dual-mask compat shims (unused by Klein)
+        # dual-mask compat shims
+        use_dual_mask: bool = True,
         n: float | None = None,
         t_prime: float | None = None,
         **kwargs,
     ):
-        # Resolve image → image_reference (projected scene), original_image → image
-        resolved_image = original_image if original_image is not None else image
-        resolved_reference = image_reference if image_reference is not None else image
-        resolved_mask = generative_refinement_mask_image if generative_refinement_mask_image is not None else mask_image
-
         if geometry_constraint_mask_image is not None:
             logger.debug(
                 "DualMaskFlux2KleinInpaintPipeline: geometry_constraint_mask_image is ignored "
                 "(Klein uses a single mask_image)."
             )
 
-
         return super().__call__(
-            # Normal until here
             prompt=prompt,
-            image=resolved_image,
-            mask_image=resolved_mask,
-            image_reference=resolved_reference,
+            image=original_image,
+            mask_image=generative_refinement_mask_image,
+            image_reference=image if use_dual_mask else None,
             strength=strength,
-            
-            
+            num_inference_steps=num_inference_steps,
             output_type=output_type,
             return_dict=return_dict,
             attention_kwargs=attention_kwargs,
