@@ -80,6 +80,7 @@ def _worker(
     seeds = args_dict["seeds"]
     upload_every = args_dict["upload_every"]
     skip_existing = args_dict["skip_existing"]
+    strength = args_dict["strength"]
     height = args_dict["height"]
     width = args_dict["width"]
     num_inference_steps = args_dict["num_inference_steps"]
@@ -171,6 +172,7 @@ def _worker(
                         prompt=prompt,
                         negative_prompt=" ",
                         mask_image=mask_image,
+                        strength=strength,
                         height=height,
                         width=width,
                         num_inference_steps=num_inference_steps,
@@ -227,6 +229,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-gpus", type=int, default=None)
     parser.add_argument("--skip-existing", action="store_true",
                         help="Skip images that have already been generated in R2")
+    parser.add_argument("--strength", type=float, default=1.0)
     parser.add_argument("--height", type=int, default=DEFAULT_HEIGHT)
     parser.add_argument("--width", type=int, default=DEFAULT_WIDTH)
     parser.add_argument("--num-inference-steps", type=int, default=DEFAULT_NUM_INFERENCE_STEPS)
@@ -239,8 +242,6 @@ def main() -> None:
     num_gpus = args.num_gpus or torch.cuda.device_count()
     if num_gpus == 0:
         raise RuntimeError("No GPUs found. Run with --num-gpus to override.")
-
-    model_slug = MODEL_NAME.replace("/", "--")
 
     # Discover available indices from R2
     r2 = R2Client()
@@ -267,6 +268,7 @@ def main() -> None:
         "seeds": args.seeds,
         "upload_every": args.upload_every,
         "skip_existing": args.skip_existing,
+        "strength": args.strength,
         "height": args.height,
         "width": args.width,
         "num_inference_steps": args.num_inference_steps,
