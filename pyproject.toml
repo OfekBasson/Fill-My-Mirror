@@ -9,10 +9,10 @@ description = "Official implementation of Fill My Mirror"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    { name = "Ofek Basson" },
-    { name = "Shimon Vainer" },
-    { name = "Yacov Hel-Or" },
-    { name = "Ohad Fried" },
+    { name = "[Anonymous]" },
+    { name = "[Anonymous]" },
+    { name = "[Anonymous]" },
+    { name = "[Anonymous]" },
 ]
 dependencies = [
     "numpy>=2.2.6",

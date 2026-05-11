@@ -9,8 +9,8 @@ pipe.enable_model_cpu_offload()
 prompt = 'Fill in the remaining regions in the mirror which are the regions corresponding to the mask. The prompt describing the image is: A standing mirror reflects a bed with a dotted cover in a cozy bedroom. Above the bed is a brown rattan headboard and a window with dark gray aluminum.'
 # source = load_image("/home/ofek_basson/Fill-My-Mirror/data/real_images/images/0.png")
 # mask = load_image("/home/ofek_basson/Fill-My-Mirror/data/real_images/masks/0.png")
-source = load_image("/home/ofek_basson/Fill-My-Mirror/temp_outputs/projected_image.png")
-mask = load_image("/home/ofek_basson/Fill-My-Mirror/temp_outputs/geometry_constraint_mask.png")
+source = load_image("temp_outputs/projected_image.png")
+mask = load_image("temp_outputs/geometry_constraint_mask.png")
 image = pipe(
     prompt=prompt,
     negative_prompt=" ",

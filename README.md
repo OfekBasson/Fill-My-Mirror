@@ -2,8 +2,8 @@
 <div align="center">
   <a href="https://google.com"><img src='https://img.shields.io/badge/arXiv-Paper-red?logo=arxiv&logoColor=white' alt='arXiv'></a>
   <a href='TODO'><img src='https://img.shields.io/badge/Project_Page-Website-green?logo=googlechrome&logoColor=white' alt='Project Page'></a>
-  <a href='https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20Real%20Images-blue'></a>
-  <a href='https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror-Blender'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20Blender%20Scenes-blue'></a>
+  <a href='https://huggingface.co/datasets/[anonymous]/Fill-My-Mirror'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20Real%20Images-blue'></a>
+  <a href='https://huggingface.co/datasets/[anonymous]/Fill-My-Mirror-Blender'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20Blender%20Scenes-blue'></a>
 </div>
 <br>
 
@@ -39,7 +39,7 @@ The following instructions were tested on **Linux with Python 3.10**.
 Clone the repository **with submodules** to also download the MoGe and MASt3R dependencies.
 
 ```bash
-git clone --recurse-submodules https://github.com/OfekBasson/Fill-My-Mirror.git
+git clone --recurse-submodules https://github.com/[anonymous]/Fill-My-Mirror.git
 cd Fill-My-Mirror
 ```
 
@@ -362,7 +362,7 @@ projection are the constrained region.
 
 Two datasets are provided:
 
-### [Real Images Dataset](https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror)
+### [Real Images Dataset](https://huggingface.co/datasets/[anonymous]/Fill-My-Mirror)
 
 Contains 50 real-world mirror scenes with the following columns per sample:
 
@@ -374,7 +374,7 @@ Contains 50 real-world mirror scenes with the following columns per sample:
 | `gt_image` | image | Ground-truth image (mirror filled) |
 | `prompt` | string | Text description of the scene |
 
-### [Blender Synthetic Dataset](https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror-Blender)
+### [Blender Synthetic Dataset](https://huggingface.co/datasets/[anonymous]/Fill-My-Mirror-Blender)
 
 Contains 15 rendered Blender scenes with mirrors, including ground-truth mirror masks, geometry, and manually assigned prompts.
 
@@ -496,7 +496,7 @@ If you use this code in your research, please cite:
 ```bibtex
 @article{fill_my_mirror,
   title={Fill My Mirror},
-  author={Basson, Ofek and Vainer, Shimon and Hel-Or, Yacov and Fried, Ohad},
+  author={[Anonymous]},
   year={2026}
 }
 ```
