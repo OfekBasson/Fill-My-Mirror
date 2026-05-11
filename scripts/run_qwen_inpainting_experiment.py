@@ -49,7 +49,7 @@ from PIL import Image
 
 from fill_my_mirror.storage import R2Client
 
-MODEL_NAME = "Qwen/Qwen-Image-Edit"
+MODEL_NAME = "Qwen/Qwen-Image-Edit-2511"
 DEFAULT_UPLOAD_EVERY = 15
 DEFAULT_HEIGHT = 1024
 DEFAULT_WIDTH = 1024
