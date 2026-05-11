@@ -45,20 +45,31 @@ import time
 import traceback
 from pathlib import Path
 
+import sys
+
 import h5py
 import numpy as np
 import pandas as pd
 import torch
 import torchvision.transforms as T
-from diffusers import (
+from PIL import Image
+
+# BrushNet classes live in the custom diffusers fork bundled with Reflecting-Reality.
+# Insert its src/ so the import below resolves to that package, not the installed one.
+_MIRRORFUSION_SRC = Path.home() / "MirrorVerse/Reflecting-Reality/MirrorFusion/src"
+sys.path.insert(0, str(_MIRRORFUSION_SRC))
+
+from diffusers import (  # noqa: E402
     BrushNetModel,
     StableDiffusionBrushNetPipeline,
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from PIL import Image
+
+from huggingface_hub import hf_hub_download
 
 from fill_my_mirror.storage import R2Client
+from fill_my_mirror.loaders import MIRRORBENCH_V2_HF_REPO
 
 DATASET = "mirrorbench_v2"
 DEFAULT_DATA_ROOT = Path.home() / "data" / "mirrorbench_v2"
@@ -67,7 +78,7 @@ MIRROR_PROMPT = "A perfect plane mirror reflection of "
 DEFAULT_UPLOAD_EVERY = 15
 DEFAULT_HEIGHT = 1024
 DEFAULT_WIDTH = 1024
-DEFAULT_NUM_INFERENCE_STEPS = 50
+DEFAULT_NUM_INFERENCE_STEPS = 30
 DEFAULT_GUIDANCE_SCALE = 7.5
 DEFAULT_BRUSHNET_CONDITIONING_SCALE = 1.0
 
@@ -358,7 +369,16 @@ def main() -> None:
     model_slug = "_".join(parts)
 
     data_root = args.data_root.expanduser()
-    df = pd.read_csv(data_root / args.csv)
+    csv_path = data_root / args.csv
+    if not csv_path.exists():
+        print(f"{args.csv} not found locally, downloading from HuggingFace...")
+        hf_hub_download(
+            repo_id=MIRRORBENCH_V2_HF_REPO,
+            filename=args.csv,
+            repo_type="dataset",
+            local_dir=str(data_root),
+        )
+    df = pd.read_csv(csv_path)
 
     all_rows = [
         {
