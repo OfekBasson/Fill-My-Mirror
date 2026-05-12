@@ -60,6 +60,7 @@ R2_PREFIX = "mirrorbench_v2/gt_geometry"
 DILATION_RADIUS = 4
 DILATION_ITERATIONS = 1
 _TRANSFORMS = ["hflip", "rot180"]
+RCS_COMPUTE_SIZE = 800  # all RCS computation (dilation included) runs at this resolution
 
 
 # ---------------------------------------------------------------------------
@@ -162,22 +163,38 @@ def compute_rcs_for_sample(
     gt_mask     = np.asarray(gt_pil.convert("L"), dtype=np.uint8) > 127
     H, W        = image_arr.shape[:2]
 
-    scene_arr = _build_scene(image_arr, mirror_mask)
+    # Resize to RCS_COMPUTE_SIZE for consistent dilation scale
+    S = RCS_COMPUTE_SIZE
+    image_800 = np.array(Image.fromarray(image_arr).resize((S, S), Image.LANCZOS))
+    mirror_mask_800 = np.array(
+        Image.fromarray(mirror_mask.astype(np.uint8) * 255).resize((S, S), Image.NEAREST)
+    ) > 127
 
-    # Union of correspondences from hflip and rot180
-    combined_mask = np.zeros((H, W), dtype=bool)
+    scene_arr = _build_scene(image_800, mirror_mask_800)
+
+    # Union of correspondences from hflip and rot180 (computed at RCS_COMPUTE_SIZE)
+    combined_mask_800 = np.zeros((S, S), dtype=bool)
     for transform in _TRANSFORMS:
-        mirror_arr = _build_mirror(image_arr, mirror_mask, transform)
+        mirror_arr = _build_mirror(image_800, mirror_mask_800, transform)
         pts_scene_raw, pts_mirror_raw = _run_mast3r_correspondences(
             scene_arr, mirror_arr, mast3r_model_name, device,
         )
         n_pts = pts_mirror_raw.shape[0]
         logger.info("[%d] %s  correspondences: %d", idx, transform, n_pts)
         if n_pts > 0:
-            xs, ys = _mirror_pts_to_image(pts_mirror_raw, transform, W, H)
-            combined_mask[ys, xs] = True
+            xs, ys = _mirror_pts_to_image(pts_mirror_raw, transform, S, S)
+            combined_mask_800[ys, xs] = True
 
-    rcs_mask = _dilate_and_intersect(combined_mask, mirror_mask, DILATION_RADIUS, iterations=DILATION_ITERATIONS)
+    rcs_mask_800 = _dilate_and_intersect(combined_mask_800, mirror_mask_800, DILATION_RADIUS, iterations=DILATION_ITERATIONS)
+
+    # Resize results back to original resolution
+    combined_mask = np.array(
+        Image.fromarray(combined_mask_800.astype(np.uint8) * 255).resize((W, H), Image.NEAREST)
+    ) > 127
+    rcs_mask = np.array(
+        Image.fromarray(rcs_mask_800.astype(np.uint8) * 255).resize((W, H), Image.NEAREST)
+    ) > 127
+
     precision, recall, f1 = _compute_pr(rcs_mask, gt_mask)
     logger.info("[%d] P=%.3f  R=%.3f  F1=%.3f", idx, precision, recall, f1)
 
@@ -192,6 +209,9 @@ def compute_rcs_for_sample(
     )
     Image.fromarray((gt_mask.astype(np.uint8) * 255), mode="L").save(
         sample_dir / "constrained_pixels_gt_geometry_mask.png"
+    )
+    Image.fromarray((mirror_mask.astype(np.uint8) * 255), mode="L").save(
+        sample_dir / "generative_refinement_mask.png"
     )
 
     return {
