@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-REAL_IMAGES_HF_REPO = "[anonymous]/Fill-My-Mirror"
-BLENDER_HF_REPO = "[anonymous]/Fill-My-Mirror-Blender"
+REAL_IMAGES_HF_REPO = "OfekBassonResearch/Fill-My-Mirror"
+BLENDER_HF_REPO = "OfekBassonResearch/Fill-My-Mirror-Blender"
 MIRRORBENCH_V2_HF_REPO = "ankitIIsc/SynMirrorV2"
 MIRRORBENCH_V2_DATA_ROOT = Path("data/mirrorbench_v2")
 
