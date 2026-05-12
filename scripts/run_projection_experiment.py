@@ -42,6 +42,7 @@ import time
 import traceback
 from pathlib import Path
 
+import numpy as np
 import torch
 import yaml
 
@@ -202,6 +203,8 @@ def main() -> None:
         try:
             print(f"{label} — estimating geometry ...")
             geometry = estimate_geometry(sample, config["geometry_model_name"], tmp_dir=out_dir)
+            if hasattr(geometry, "depth") and geometry.depth is not None:
+                np.save(out_dir / "depth.npy", geometry.depth)
             gc.collect()
             torch.cuda.empty_cache()
 

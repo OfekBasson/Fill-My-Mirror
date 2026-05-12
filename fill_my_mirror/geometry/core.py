@@ -52,6 +52,7 @@ class GeometryOutputBase:
 @dataclass
 class GeometryOutputSingleMirror(GeometryOutputBase):
     mirror_entry: MirrorEntry | None = None
+    depth: np.ndarray | None = None
 
 
 @dataclass
@@ -182,6 +183,7 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
         return GeometryOutputSingleMirror(
             intrinsics=intrinsics,
             mirror_entry=entry,
+            depth=depth,
         )
 
     def _get_geometry_multiple_mirrors(self, sample: EstimatedGeometrySample, tmp_dir: Path | None = None) -> GeometryOutputMultipleMirrors:
@@ -337,7 +339,7 @@ class DepthAnythingGeometryProcessor(GeometryProcessorBase):
         print(f"  → focal_length_mm:    {focal_length_mm:.4f}  (sensor_width={sensor_width_mm}mm)")
 
         entry: MirrorEntry = (mirror_pts, (0,), (0, 0, 0), mesh_path, plane)
-        return GeometryOutputSingleMirror(intrinsics=intrinsics, mirror_entry=entry)
+        return GeometryOutputSingleMirror(intrinsics=intrinsics, mirror_entry=entry, depth=depth)
 
 
 GEOMETRY_MODEL_REGISTRY: dict[str, type] = {
