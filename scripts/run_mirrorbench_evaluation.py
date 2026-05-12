@@ -249,11 +249,11 @@ class _MaskCache:
 
 
 # ---------------------------------------------------------------------------
-# Step 4 — Per-index metric computation
+# Step 4 — Per-index metric computation (all models at once)
 # ---------------------------------------------------------------------------
 
-def evaluate_index(
-    model: dict,
+def evaluate_index_all_models(
+    active_models: list[dict],
     index: int,
     gt_image: Image.Image,
     masks: dict,
@@ -261,51 +261,88 @@ def evaluate_index(
     tmp_root: Path,
     skip_existing: bool,
     output_dir: Path,
-) -> dict | None:
-    """Download the generated image, compute metrics, save JSON. Returns metrics dict."""
-    r2_json_key = _r2_metrics_key(model["slug"], index)
+) -> dict[str, dict]:
+    """
+    Download generated images for all models at this index, run compute_metrics
+    once (sharing gt_image and masks), then save per-model JSONs.
 
-    if skip_existing and r2.key_exists(r2_json_key):
+    Returns {model_slug: metrics_dict} for every model that succeeded.
+    """
+    # --- Determine which models still need computation ---
+    pending: list[dict] = []
+    cached: dict[str, dict] = {}
+
+    for m in active_models:
+        r2_key = _r2_metrics_key(m["slug"], index)
+        if skip_existing and r2.key_exists(r2_key):
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".json") as tf:
+                    r2.download_file(r2_key, Path(tf.name))
+                    cached[m["slug"]] = json.loads(Path(tf.name).read_text())
+                continue
+            except Exception:
+                pass
+        pending.append(m)
+
+    if not pending:
+        return cached
+
+    # --- Download generated images for pending models ---
+    img_dir = tmp_root / str(index)
+    img_dir.mkdir(parents=True, exist_ok=True)
+
+    gen_images: list[GeneratedImage] = []
+    slug_to_local: dict[str, Path] = {}
+
+    for m in pending:
+        img_key = m["key_template"].format(index=index)
+        local_img = img_dir / f"{m['slug']}.png"
         try:
-            with tempfile.NamedTemporaryFile(suffix=".json") as tf:
-                r2.download_file(r2_json_key, Path(tf.name))
-                return json.loads(Path(tf.name).read_text())
+            r2.download_file(img_key, local_img)
+            gen_images.append(GeneratedImage(
+                name=m["slug"],
+                image=Image.open(local_img).convert("RGB"),
+            ))
+            slug_to_local[m["slug"]] = local_img
         except Exception:
-            pass
+            print(f"    [eval] cannot download {img_key}")
 
-    img_key = model["key_template"].format(index=index)
-    local_img = tmp_root / model["slug"] / f"{index}.png"
-    local_img.parent.mkdir(parents=True, exist_ok=True)
+    if not gen_images:
+        return cached
 
+    # --- Single compute_metrics call for all pending models ---
     try:
-        r2.download_file(img_key, local_img)
-    except Exception:
-        print(f"    [eval] cannot download {img_key}")
-        return None
-
-    try:
-        gen_image = GeneratedImage(name=str(index), image=Image.open(local_img).convert("RGB"))
         with tempfile.TemporaryDirectory() as tmp_metrics:
             df = compute_metrics(MetricsInput(
                 gt_image=gt_image,
-                generated_images=[gen_image],
+                generated_images=gen_images,
                 full_mirror_mask=masks["full_mirror_mask"],
                 constrained_mask=masks["constrained_mask"],
                 save_path=tmp_metrics,
                 prompt="",
             ))
-        row = df.iloc[0].drop("name", errors="ignore").to_dict()
     except Exception:
-        print(f"    [eval] metrics failed for {model['name']} index {index}")
+        print(f"    [eval] compute_metrics failed for index {index}")
         traceback.print_exc()
-        return None
-    finally:
-        local_img.unlink(missing_ok=True)
+        for p in slug_to_local.values():
+            p.unlink(missing_ok=True)
+        return cached
 
-    local_json = output_dir / model["slug"] / f"{index}_metrics.json"
-    _save_json_local(row, local_json)
-    _upload_json(row, r2_json_key, r2)
-    return row
+    # --- Extract per-model rows from the DataFrame and persist ---
+    results = dict(cached)
+    for _, row in df.iterrows():
+        slug = row["name"]
+        metrics = row.drop("name").to_dict()
+        r2_key = _r2_metrics_key(slug, index)
+        local_json = output_dir / slug / f"{index}_metrics.json"
+        _save_json_local(metrics, local_json)
+        _upload_json(metrics, r2_key, r2)
+        results[slug] = metrics
+
+    for p in slug_to_local.values():
+        p.unlink(missing_ok=True)
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -487,51 +524,57 @@ def main() -> None:
         loader = MirrorBenchV2SampleLoader()
         print(f"  Dataset has {len(loader)} samples")
 
+        # Collect all indices that appear in at least one active model
+        all_active_indices = sorted({idx for m in active_models for idx in present[m["slug"]]})
+        print(f"  {len(all_active_indices)} unique indices across active models")
+
+        # Per-model accumulator: slug -> {index -> metrics}
+        index_metrics_by_model: dict[str, dict[int, dict]] = {m["slug"]: {} for m in active_models}
+
         with tempfile.TemporaryDirectory(prefix="mirrorbench_eval_") as tmp_str:
             tmp_root = Path(tmp_str)
             mask_cache = _MaskCache(r2, tmp_root / "masks")
 
-            for m in active_models:
-                slug = m["slug"]
-                indices = sorted(present[slug])
-                print(f"\n[{m['name']}] {len(indices)} indices available")
-                index_metrics: dict[int, dict] = {}
+            for i, index in enumerate(all_active_indices):
+                if index >= len(loader):
+                    print(f"  [{i+1}/{len(all_active_indices)}] index {index}: out of dataset range — skipping")
+                    continue
 
-                for i, index in enumerate(indices):
-                    if index >= len(loader):
-                        print(f"  [{i+1}/{len(indices)}] index {index}: out of dataset range — skipping")
-                        continue
+                masks = mask_cache.get(MASK_PREFIX, index)
+                if masks is None:
+                    print(f"  [{i+1}/{len(all_active_indices)}] index {index}: masks unavailable — skipping")
+                    continue
 
-                    masks = mask_cache.get(MASK_PREFIX, index)
-                    if masks is None:
-                        print(f"  [{i+1}/{len(indices)}] index {index}: masks unavailable — skipping")
-                        continue
+                try:
+                    sample = loader.load(index)
+                    gt_image = Image.open(sample.gt_image_path).convert("RGB")
+                except Exception:
+                    print(f"  [{i+1}/{len(all_active_indices)}] index {index}: failed to load GT — skipping")
+                    traceback.print_exc()
+                    continue
 
-                    try:
-                        sample = loader.load(index)
-                        gt_image = Image.open(sample.gt_image_path).convert("RGB")
-                    except Exception:
-                        print(f"  [{i+1}/{len(indices)}] index {index}: failed to load GT — skipping")
-                        traceback.print_exc()
-                        continue
+                # Only pass models that have this index
+                models_for_index = [m for m in active_models if index in present[m["slug"]]]
 
-                    metrics = evaluate_index(
-                        m, index, gt_image, masks, r2,
-                        tmp_root / "imgs",
-                        skip_existing=args.skip_existing,
-                        output_dir=output_dir,
-                    )
-                    if metrics is not None:
-                        index_metrics[index] = metrics
+                results = evaluate_index_all_models(
+                    models_for_index, index, gt_image, masks, r2,
+                    tmp_root / "imgs",
+                    skip_existing=args.skip_existing,
+                    output_dir=output_dir,
+                )
+                for slug, metrics in results.items():
+                    index_metrics_by_model[slug][index] = metrics
 
-                    if (i + 1) % 100 == 0 or (i + 1) == len(indices):
-                        print(f"  [{i+1}/{len(indices)}] done so far: {len(index_metrics)} evaluated")
+                if (i + 1) % 100 == 0 or (i + 1) == len(all_active_indices):
+                    counts = ", ".join(f"{m['slug']}:{len(index_metrics_by_model[m['slug']])}" for m in active_models)
+                    print(f"  [{i+1}/{len(all_active_indices)}] evaluated — {counts}")
 
-                summary = build_summary(m, index_metrics)
-                _save_json_local(summary, output_dir / slug / "summary.json")
-                _upload_json(summary, f"{R2_EVAL_PREFIX}/{slug}/summary.json", r2)
-                all_summaries.append(summary)
-                print(f"  Summary saved for {m['name']}")
+        for m in active_models:
+            summary = build_summary(m, index_metrics_by_model[m["slug"]])
+            _save_json_local(summary, output_dir / m["slug"] / "summary.json")
+            _upload_json(summary, f"{R2_EVAL_PREFIX}/{m['slug']}/summary.json", r2)
+            all_summaries.append(summary)
+            print(f"  Summary saved for {m['name']}")
 
     if not all_summaries:
         print("No summaries built — nothing to plot")
