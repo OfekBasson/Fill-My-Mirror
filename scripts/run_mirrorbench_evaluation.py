@@ -469,7 +469,22 @@ def parse_args() -> argparse.Namespace:
                         help="Skip metric computation; reload existing per-index JSONs from R2")
     parser.add_argument("--models", nargs="+", metavar="SLUG",
                         help="Restrict evaluation to specific model slugs (default: all)")
+    parser.add_argument("--start-index", type=int, default=None,
+                        help="First index to evaluate (inclusive). Omit to start from the beginning.")
+    parser.add_argument("--end-index", type=int, default=None,
+                        help="Last index to evaluate (exclusive). Omit to run to the end.")
     return parser.parse_args()
+
+
+def _check_all_evaluated(active_models: list[dict], present: dict[str, set[int]], r2: R2Client) -> bool:
+    """Return True only if every index of every active model has a metrics JSON in R2."""
+    all_done = True
+    for m in active_models:
+        missing = [idx for idx in present[m["slug"]] if not r2.key_exists(_r2_metrics_key(m["slug"], idx))]
+        if missing:
+            print(f"  [{m['name']}] {len(missing)} indices not yet evaluated (e.g. {missing[:5]})")
+            all_done = False
+    return all_done
 
 
 def _load_existing_metrics(model: dict, present: set[int], r2: R2Client) -> dict[int, dict]:
@@ -526,9 +541,17 @@ def main() -> None:
         loader = MirrorBenchV2SampleLoader()
         print(f"  Dataset has {len(loader)} samples")
 
-        # Collect all indices that appear in at least one active model
+        # Collect all indices that appear in at least one active model, then slice
         all_active_indices = sorted({idx for m in active_models for idx in present[m["slug"]]})
-        print(f"  {len(all_active_indices)} unique indices across active models")
+        if args.start_index is not None or args.end_index is not None:
+            all_active_indices = [
+                idx for idx in all_active_indices
+                if (args.start_index is None or idx >= args.start_index)
+                and (args.end_index   is None or idx <  args.end_index)
+            ]
+            print(f"  Sliced to indices [{args.start_index}, {args.end_index}): {len(all_active_indices)} indices")
+        else:
+            print(f"  {len(all_active_indices)} unique indices across active models")
 
         # Per-model accumulator: slug -> {index -> metrics}
         index_metrics_by_model: dict[str, dict[int, dict]] = {m["slug"]: {} for m in active_models}
@@ -572,6 +595,14 @@ def main() -> None:
                 if (i + 1) % 100 == 0 or (i + 1) == len(all_active_indices):
                     counts = ", ".join(f"{m['slug']}:{len(index_metrics_by_model[m['slug']])}" for m in active_models)
                     print(f"  [{i+1}/{len(all_active_indices)}] evaluated — {counts}")
+
+        is_partial_run = args.start_index is not None or args.end_index is not None
+        if is_partial_run:
+            print("\nPartial run — checking whether all indices are evaluated in R2 before summarizing...")
+            if not _check_all_evaluated(active_models, present, r2):
+                print("Not all indices evaluated yet — skipping summaries and plots.")
+                print("Run without --start-index/--end-index (or with --plots-only) once all shards are done.")
+                return
 
         for m in active_models:
             summary = build_summary(m, index_metrics_by_model[m["slug"]])
