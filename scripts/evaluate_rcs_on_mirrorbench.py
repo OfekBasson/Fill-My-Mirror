@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 R2_PREFIX = "mirrorbench_v2/gt_geometry"
 DILATION_RADIUS = 4
-DILATION_ITERATIONS = 4
+DILATION_ITERATIONS = 1
 _TRANSFORMS = ["hflip", "rot180"]
 
 
@@ -190,6 +190,9 @@ def compute_rcs_for_sample(
     Image.fromarray((rcs_mask.astype(np.uint8) * 255), mode="L").save(
         sample_dir / "rcs_mask.png"
     )
+    Image.fromarray((gt_mask.astype(np.uint8) * 255), mode="L").save(
+        sample_dir / "constrained_pixels_gt_geometry_mask.png"
+    )
 
     return {
         "idx":       idx,
@@ -285,6 +288,13 @@ def main() -> None:
     df.to_csv(metrics_path, index=False)
     logger.info("Saved metrics to %s", metrics_path)
 
+    # Ranking: sorted by F1 descending; rank 1 = best
+    ranking = df.sort_values("f1", ascending=False).reset_index(drop=True)
+    ranking.insert(0, "rank", ranking.index + 1)
+    ranking_path = output_dir / "ranking.csv"
+    ranking.to_csv(ranking_path, index=False)
+    logger.info("Saved ranking to %s", ranking_path)
+
     mean_p  = df["precision"].mean()
     mean_r  = df["recall"].mean()
     mean_f1 = df["f1"].mean()
@@ -295,6 +305,11 @@ def main() -> None:
     print(f"  Mean Precision    : {mean_p:.4f}")
     print(f"  Mean Recall       : {mean_r:.4f}")
     print(f"  Mean F1           : {mean_f1:.4f}")
+    print("=" * 60)
+    print("\nTop 10 (best F1):")
+    print(ranking.head(10).to_string(index=False, float_format=lambda x: f"{x:.4f}"))
+    print("\nBottom 10 (worst F1):")
+    print(ranking.tail(10).to_string(index=False, float_format=lambda x: f"{x:.4f}"))
     print("=" * 60)
 
     # Precision–Recall scatter

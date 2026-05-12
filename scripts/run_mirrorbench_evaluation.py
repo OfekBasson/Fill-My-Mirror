@@ -79,6 +79,7 @@ MASK_PREFIX = "mirrorbench_v2/gt_geometry"
 METRIC_KEYS = (
     "psnr_full_mirror", "ssim_full_mirror", "lpips_full_mirror",
     "psnr_constrained", "ssim_constrained", "lpips_constrained",
+    "clip_similarity",
 )
 
 MODELS: list[dict] = [
@@ -257,6 +258,7 @@ def evaluate_index_all_models(
     index: int,
     gt_image: Image.Image,
     masks: dict,
+    prompt: str,
     r2: R2Client,
     tmp_root: Path,
     skip_existing: bool,
@@ -319,7 +321,7 @@ def evaluate_index_all_models(
                 full_mirror_mask=masks["full_mirror_mask"],
                 constrained_mask=masks["constrained_mask"],
                 save_path=tmp_metrics,
-                prompt="",
+                prompt=prompt,
             ))
     except Exception:
         print(f"    [eval] compute_metrics failed for index {index}")
@@ -557,8 +559,10 @@ def main() -> None:
                 models_for_index = [m for m in active_models if index in present[m["slug"]]]
 
                 results = evaluate_index_all_models(
-                    models_for_index, index, gt_image, masks, r2,
-                    tmp_root / "imgs",
+                    models_for_index, index, gt_image, masks,
+                    prompt=sample.prompt or "",
+                    r2=r2,
+                    tmp_root=tmp_root / "imgs",
                     skip_existing=args.skip_existing,
                     output_dir=output_dir,
                 )
