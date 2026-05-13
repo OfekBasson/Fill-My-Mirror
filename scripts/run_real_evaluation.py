@@ -625,8 +625,12 @@ _PLOT_METRICS = [
 ]
 
 
+_PLOT_EXCLUDE_SLUGS = {"flux2_klein_vanilla"}
+
+
 def build_plots(summaries: list[dict], output_dir: Path, r2: R2Client) -> None:
     """Bar chart: mean±SE across all (index, seed) pairs."""
+    summaries = [s for s in summaries if s["model_slug"] not in _PLOT_EXCLUDE_SLUGS]
     model_names = [s["model_name"] for s in summaries]
     xs = np.arange(len(model_names))
     width = 0.6
@@ -658,8 +662,7 @@ def build_plots(summaries: list[dict], output_dir: Path, r2: R2Client) -> None:
         ax.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
         ax.set_xlim(-0.5, len(model_names) - 0.5)
 
-    fig.suptitle("Real Dataset — Model Comparison (mean±SE across seeds & indices)", fontsize=12, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    fig.tight_layout()
 
     local_pdf = output_dir / "comparison_plots.pdf"
     fig.savefig(local_pdf, format="pdf", bbox_inches="tight")
@@ -671,6 +674,7 @@ def build_plots(summaries: list[dict], output_dir: Path, r2: R2Client) -> None:
 
 def build_seed_variance_plots(summaries: list[dict], output_dir: Path, r2: R2Client) -> None:
     """Two-panel plots: per-seed breakdown + within-index seed variance."""
+    summaries = [s for s in summaries if s["model_slug"] not in _PLOT_EXCLUDE_SLUGS]
     seeds_str = summaries[0].get("seeds_evaluated", []) if summaries else []
     if not seeds_str:
         return
@@ -723,7 +727,6 @@ def build_seed_variance_plots(summaries: list[dict], output_dir: Path, r2: R2Cli
         ax_var.set_title("Seed variance (lower = more stable)", fontsize=10)
         ax_var.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
 
-        fig.suptitle(f"Seed Analysis — {ylabel}", fontsize=11, fontweight="bold")
         fig.tight_layout()
 
         safe_metric = metric.replace("/", "_")
@@ -731,6 +734,46 @@ def build_seed_variance_plots(summaries: list[dict], output_dir: Path, r2: R2Cli
         fig.savefig(local_pdf, format="pdf", bbox_inches="tight")
         plt.close(fig)
         print(f"  Saved {local_pdf}")
+
+        # Save each panel separately (no title, no axis titles)
+        for panel_ax, panel_suffix in [(ax_seeds, "per_seed"), (ax_var, "seed_std")]:
+            fig_single, ax_single = plt.subplots(1, 1, figsize=(max(7, n_models * 1.0), 5))
+            for artist in panel_ax.get_children():
+                pass  # copy via re-drawing below
+            # Re-draw the panel independently
+            fig_single2, ax_single2 = plt.subplots(1, 1, figsize=(max(7, n_models * 1.0), 5))
+            plt.close(fig_single)
+            if panel_suffix == "per_seed":
+                for si, seed in enumerate(seeds_str):
+                    seed_key = str(seed)
+                    vals = np.array([
+                        s["per_seed"].get(seed_key, {}).get(metric, {}).get("mean") or float("nan")
+                        for s in summaries
+                    ])
+                    offset = (si - (n_seeds - 1) / 2) * bar_w
+                    ax_single2.bar(xs + offset, np.where(np.isnan(vals), 0, vals),
+                                   bar_w * 0.9, label=f"seed {seed}",
+                                   color=cmap(si % 8), alpha=0.85, zorder=3)
+                ax_single2.set_xticks(xs)
+                ax_single2.set_xticklabels(model_names, rotation=35, ha="right", fontsize=8)
+                ax_single2.set_ylabel(ylabel, fontsize=9)
+                ax_single2.legend(fontsize=8)
+                ax_single2.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
+            else:
+                ax_single2.bar(xs, np.where(np.isnan(stds), 0, stds), 0.6, color=bar_colors, alpha=0.85, zorder=3)
+                for i, v in enumerate(stds):
+                    if np.isnan(v):
+                        ax_single2.text(i, 0.0, "N/A", ha="center", va="bottom", fontsize=7, color="gray",
+                                        transform=ax_single2.get_xaxis_transform())
+                ax_single2.set_xticks(xs)
+                ax_single2.set_xticklabels(model_names, rotation=35, ha="right", fontsize=8)
+                ax_single2.set_ylabel(f"Mean within-index σ ({ylabel.split('(')[0].strip()})", fontsize=9)
+                ax_single2.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
+            fig_single2.tight_layout()
+            panel_pdf = output_dir / f"seed_variance_{safe_metric}_{panel_suffix}.pdf"
+            fig_single2.savefig(panel_pdf, format="pdf", bbox_inches="tight")
+            plt.close(fig_single2)
+            print(f"  Saved {panel_pdf}")
 
     # Also build a combined seed-variance summary PDF
     fig, axes = plt.subplots(len(_PLOT_METRICS), 1,
@@ -751,8 +794,7 @@ def build_seed_variance_plots(summaries: list[dict], output_dir: Path, r2: R2Cli
         ax.set_ylabel(f"Mean σ across seeds\n({ylabel})", fontsize=8)
         ax.grid(axis="y", linestyle="--", alpha=0.4, zorder=0)
 
-    fig.suptitle("Seed Variance Summary (lower = more stable across seeds)", fontsize=12, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    fig.tight_layout()
     local_pdf = output_dir / "seed_variance_plots.pdf"
     fig.savefig(local_pdf, format="pdf", bbox_inches="tight")
     plt.close(fig)
