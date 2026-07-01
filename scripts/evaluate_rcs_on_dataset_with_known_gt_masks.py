@@ -1,26 +1,33 @@
 """
-RCS Mask Evaluation on MirrorBench V2
-======================================
-For each image in the MirrorBench dataset (R2: mirrorbench_v2/gt_geometry/),
-computes the RCS mask using both hflip and rot180 transforms (union), then
-evaluates precision/recall against the ground-truth constrained pixels mask.
+RCS Mask Evaluation on a Dataset with Known GT Masks
+=====================================================
+For each image in a dataset stored on R2, computes the RCS mask using a
+configurable set of transforms (hflip, rot180 — union), then evaluates
+precision/recall against the ground-truth constrained pixels mask.
 
-Fixed parameters: dilation radius = 4, dilation iterations = 4.
-
-R2 paths per index:
-  Image  : mirrorbench_v2/gt_geometry/<idx>/gt_image.png
-  Mask   : mirrorbench_v2/gt_geometry/<idx>/generative_refinement_mask.png
-  GT     : mirrorbench_v2/gt_geometry/<idx>/constrained_pixels_gt_geometry_mask.png
+Expected R2 layout under <r2-prefix>/<idx>/:
+  gt_image.png
+  generative_refinement_mask.png
+  constrained_pixels_gt_geometry_mask.png
 
 Usage
 -----
-    conda run -n fill-my-mirror python scripts/evaluate_rcs_on_mirrorbench.py \
-        --indices 0 1 2 \
+    # MirrorBench (default):
+    conda run -n fill-my-mirror python scripts/evaluate_rcs_on_dataset_with_known_gt_masks.py \
+        --r2-prefix mirrorbench_v2/gt_geometry \
+        --transforms hflip rot180 \
         --output-dir outputs/rcs_mirrorbench_eval
 
+    # Blender:
+    conda run -n fill-my-mirror python scripts/evaluate_rcs_on_dataset_with_known_gt_masks.py \
+        --r2-prefix blender/gt_geometry \
+        --transforms hflip \
+        --output-dir outputs/rcs_blender_eval
+
     # Run all indices:
-    conda run -n fill-my-mirror python scripts/evaluate_rcs_on_mirrorbench.py \
-        --output-dir outputs/rcs_mirrorbench_eval
+    conda run -n fill-my-mirror python scripts/evaluate_rcs_on_dataset_with_known_gt_masks.py \
+        --r2-prefix blender/gt_geometry \
+        --output-dir outputs/rcs_blender_eval
 """
 
 from __future__ import annotations
@@ -29,7 +36,6 @@ import argparse
 import logging
 import sys
 import tempfile
-from io import BytesIO
 from pathlib import Path
 
 import numpy as np
@@ -56,16 +62,15 @@ from fill_my_mirror.storage import R2Client
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-R2_PREFIX = "mirrorbench_v2/gt_geometry"
 DILATION_RADIUS = 4
 DILATION_ITERATIONS = 1
-_TRANSFORMS = ["hflip"]
-# _TRANSFORMS = ["hflip", "rot180"]
 RCS_COMPUTE_SIZE = 800  # all RCS computation (dilation included) runs at this resolution
+
+ALL_TRANSFORMS = ["hflip", "rot180"]
 
 
 # ---------------------------------------------------------------------------
-# Geometry helpers (same as sweep.py)
+# Geometry helpers
 # ---------------------------------------------------------------------------
 
 def _build_scene(image_arr: np.ndarray, mirror_mask_arr: np.ndarray) -> np.ndarray:
@@ -144,13 +149,14 @@ def compute_rcs_for_sample(
     mast3r_model_name: str,
     device: str,
     output_dir: Path,
+    r2_prefix: str,
+    transforms: list[str],
 ) -> dict | None:
-    prefix = f"{R2_PREFIX}/{idx}"
+    prefix = f"{r2_prefix}/{idx}"
     image_key  = f"{prefix}/gt_image.png"
     mask_key   = f"{prefix}/generative_refinement_mask.png"
     gt_key     = f"{prefix}/constrained_pixels_gt_geometry_mask.png"
 
-    # Download inputs
     try:
         image_pil  = _download_pil(r2, image_key)
         mask_pil   = _download_pil(r2, mask_key)
@@ -173,9 +179,9 @@ def compute_rcs_for_sample(
 
     scene_arr = _build_scene(image_800, mirror_mask_800)
 
-    # Union of correspondences from hflip and rot180 (computed at RCS_COMPUTE_SIZE)
+    # Union of correspondences across requested transforms (computed at RCS_COMPUTE_SIZE)
     combined_mask_800 = np.zeros((S, S), dtype=bool)
-    for transform in _TRANSFORMS:
+    for transform in transforms:
         mirror_arr = _build_mirror(image_800, mirror_mask_800, transform)
         pts_scene_raw, pts_mirror_raw = _run_mast3r_correspondences(
             scene_arr, mirror_arr, mast3r_model_name, device,
@@ -231,14 +237,22 @@ def compute_rcs_for_sample(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description=f"Evaluate RCS mask (r={DILATION_RADIUS}, i={DILATION_ITERATIONS}) on MirrorBench V2."
+        description=f"Evaluate RCS mask (r={DILATION_RADIUS}, i={DILATION_ITERATIONS}) on a dataset with known GT masks."
+    )
+    parser.add_argument(
+        "--r2-prefix", type=str, required=True,
+        help="R2 key prefix for the dataset, e.g. 'mirrorbench_v2/gt_geometry' or 'blender/gt_geometry'.",
+    )
+    parser.add_argument(
+        "--transforms", type=str, nargs="+", choices=ALL_TRANSFORMS, default=["hflip"],
+        help="Transforms to use for RCS computation (union). Choices: hflip, rot180. Default: hflip.",
     )
     parser.add_argument(
         "--indices", type=int, nargs="*", default=None,
         help="Subset of dataset indices. Default: all available.",
     )
     parser.add_argument(
-        "--output-dir", type=str, default="outputs/rcs_mirrorbench_eval",
+        "--output-dir", type=str, required=True,
         help="Directory for results.",
     )
     parser.add_argument("--device", type=str, default=None, help="Torch device (cuda/cpu).")
@@ -248,8 +262,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    r2_prefix = args.r2_prefix
+    transforms = args.transforms
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Dataset prefix : %s", r2_prefix)
+    logger.info("Transforms     : %s", transforms)
 
     if not _ensure_mast3r():
         logger.error("MASt3R not available. Aborting.")
@@ -266,11 +285,11 @@ def main() -> None:
     if args.indices is not None:
         indices = args.indices
     else:
-        logger.info("Listing available indices from R2 under %s ...", R2_PREFIX)
-        keys = r2.list_keys(R2_PREFIX + "/")
+        logger.info("Listing available indices from R2 under %s ...", r2_prefix)
+        keys = r2.list_keys(r2_prefix + "/")
         seen: set[int] = set()
         for k in keys:
-            parts = k.removeprefix(R2_PREFIX + "/").split("/")
+            parts = k.removeprefix(r2_prefix + "/").split("/")
             if parts[0].isdigit():
                 seen.add(int(parts[0]))
         indices = sorted(seen)
@@ -279,7 +298,6 @@ def main() -> None:
     rows: list[dict] = []
     metrics_path = output_dir / "metrics.csv"
 
-    # Load existing metrics so we can append
     if metrics_path.exists():
         existing_df = pd.read_csv(metrics_path)
         existing_indices = set(existing_df["idx"].tolist())
@@ -295,10 +313,11 @@ def main() -> None:
             logger.info("[%d] Skipping (rcs_mask.png already exists).", idx)
             continue
 
-        result = compute_rcs_for_sample(idx, r2, mast3r_model_name, device, output_dir)
+        result = compute_rcs_for_sample(
+            idx, r2, mast3r_model_name, device, output_dir, r2_prefix, transforms,
+        )
         if result is not None:
             rows.append(result)
-            # Save incrementally
             pd.DataFrame(rows).to_csv(metrics_path, index=False)
 
     if not rows:
@@ -309,7 +328,6 @@ def main() -> None:
     df.to_csv(metrics_path, index=False)
     logger.info("Saved metrics to %s", metrics_path)
 
-    # Ranking: sorted by F1 descending; rank 1 = best
     ranking = df.sort_values("f1", ascending=False).reset_index(drop=True)
     ranking.insert(0, "rank", ranking.index + 1)
     ranking_path = output_dir / "ranking.csv"
@@ -320,8 +338,9 @@ def main() -> None:
     mean_r  = df["recall"].mean()
     mean_f1 = df["f1"].mean()
 
+    transforms_str = "+".join(transforms)
     print("\n" + "=" * 60)
-    print(f"RCS Evaluation on MirrorBench V2  (r={DILATION_RADIUS}, i={DILATION_ITERATIONS})")
+    print(f"RCS Evaluation  [{r2_prefix}]  transforms={transforms_str}  (r={DILATION_RADIUS}, i={DILATION_ITERATIONS})")
     print(f"  Samples evaluated : {len(df)}")
     print(f"  Mean Precision    : {mean_p:.4f}")
     print(f"  Mean Recall       : {mean_r:.4f}")
@@ -333,7 +352,6 @@ def main() -> None:
     print(ranking.tail(10).to_string(index=False, float_format=lambda x: f"{x:.4f}"))
     print("=" * 60)
 
-    # Precision–Recall scatter
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.scatter(df["recall"], df["precision"], alpha=0.5, s=15, color="steelblue")
     ax.axvline(mean_r, color="red", linestyle="--", linewidth=1, label=f"mean R={mean_r:.3f}")
@@ -344,7 +362,7 @@ def main() -> None:
     ax.set_ylim(-0.02, 1.02)
     ax.legend(fontsize=9)
     ax.grid(True, linestyle="--", alpha=0.4)
-    ax.set_title(f"RCS on MirrorBench (r={DILATION_RADIUS}, i={DILATION_ITERATIONS})", fontsize=10)
+    ax.set_title(f"RCS  [{r2_prefix}]  {transforms_str}  (r={DILATION_RADIUS}, i={DILATION_ITERATIONS})", fontsize=9)
     fig.tight_layout()
     fig.savefig(output_dir / "precision_recall_scatter.pdf", dpi=150, bbox_inches="tight")
     plt.close(fig)
