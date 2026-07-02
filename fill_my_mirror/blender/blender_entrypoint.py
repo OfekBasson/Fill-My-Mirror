@@ -12,9 +12,9 @@ CAMERA_MATRIX_WORLD = Matrix((
 ))
 
 
-def setup_textured_materials():
+def setup_textured_materials(backface_culling: bool = False, frontface_culling: bool = False):
     scene = bpy.context.scene
-    
+
     for obj in scene.objects:
         if obj.type != "MESH":
             continue
@@ -43,25 +43,51 @@ def setup_textured_materials():
             tex_node.interpolation = "Linear"
             tex_node.image.colorspace_settings.name = 'AgX Base sRGB'
 
-            emission_front = nodes.new(type="ShaderNodeEmission")
-            emission_back = nodes.new(type="ShaderNodeEmission")
-            emission_back.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
-            emission_back.inputs["Strength"].default_value = 1.0
-            mat.use_backface_culling = False
-
-            geometry_node = nodes.new(type="ShaderNodeNewGeometry")
-            mix_shader = nodes.new(type="ShaderNodeMixShader")
             output_node = nodes.new(type="ShaderNodeOutputMaterial")
 
-            mat.use_backface_culling = False
+            if backface_culling:
+                mat.use_backface_culling = True
+                emission = nodes.new(type="ShaderNodeEmission")
+                links.new(tex_node.outputs["Color"], emission.inputs["Color"])
+                links.new(emission.outputs["Emission"], output_node.inputs["Surface"])
 
-            links.new(tex_node.outputs["Color"], emission_front.inputs["Color"])
-            links.new(geometry_node.outputs["Backfacing"], mix_shader.inputs["Fac"])
+            elif frontface_culling:
+                # Front-facing fragments → Transparent BSDF (invisible)
+                # Back-facing fragments  → textured Emission (visible)
+                # Requires film_transparent=True + RGBA output.
+                mat.use_backface_culling = False
+                mat.blend_method = 'HASHED'
 
-            # front-facing = textured, back-facing = black
-            links.new(emission_front.outputs["Emission"], mix_shader.inputs[2])
-            links.new(emission_back.outputs["Emission"], mix_shader.inputs[1])
-            links.new(mix_shader.outputs["Shader"], output_node.inputs["Surface"])
+                geometry_node = nodes.new(type="ShaderNodeNewGeometry")
+                emission = nodes.new(type="ShaderNodeEmission")
+                transparent = nodes.new(type="ShaderNodeBsdfTransparent")
+                mix_shader = nodes.new(type="ShaderNodeMixShader")
+
+                links.new(tex_node.outputs["Color"], emission.inputs["Color"])
+                links.new(geometry_node.outputs["Backfacing"], mix_shader.inputs["Fac"])
+                # Fac=0 (front-facing): transparent
+                links.new(transparent.outputs["BSDF"], mix_shader.inputs[1])
+                # Fac=1 (back-facing): textured emission
+                links.new(emission.outputs["Emission"], mix_shader.inputs[2])
+                links.new(mix_shader.outputs["Shader"], output_node.inputs["Surface"])
+
+            else:
+                mat.use_backface_culling = False
+                emission_front = nodes.new(type="ShaderNodeEmission")
+                emission_back = nodes.new(type="ShaderNodeEmission")
+                emission_back.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
+                emission_back.inputs["Strength"].default_value = 1.0
+
+                geometry_node = nodes.new(type="ShaderNodeNewGeometry")
+                mix_shader = nodes.new(type="ShaderNodeMixShader")
+
+                links.new(tex_node.outputs["Color"], emission_front.inputs["Color"])
+                links.new(geometry_node.outputs["Backfacing"], mix_shader.inputs["Fac"])
+
+                # front-facing = textured, back-facing = black
+                links.new(emission_front.outputs["Emission"], mix_shader.inputs[2])
+                links.new(emission_back.outputs["Emission"], mix_shader.inputs[1])
+                links.new(mix_shader.outputs["Shader"], output_node.inputs["Surface"])
 
 
 def setup_bw_materials():
@@ -155,7 +181,9 @@ def main():
     output_path = args[1]
     bw_output_path = args[2]
     npz_path = args[3]
-    depth_output_path = args[4] if len(args) > 4 else None
+    depth_output_path = (args[4] if args[4] else None) if len(args) > 4 else None
+    backface_culling  = (args[5] == "1") if len(args) > 5 else False
+    frontface_culling = (args[6] == "1") if len(args) > 6 else False
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.use_preferences_save = False
@@ -178,11 +206,18 @@ def main():
 
     setup_camera(intrinsics, height, width)
 
-    setup_textured_materials()
+    setup_textured_materials(backface_culling=backface_culling, frontface_culling=frontface_culling)
+    if frontface_culling:
+        scene.render.film_transparent = True
+        scene.render.image_settings.color_mode = 'RGBA'
     if depth_output_path is not None:
         setup_depth_output(scene, depth_output_path)
     scene.render.filepath = output_path
     bpy.ops.render.render(write_still=True)
+
+    # Reset to opaque RGB for the B&W render
+    scene.render.film_transparent = False
+    scene.render.image_settings.color_mode = 'RGB'
 
     # Disable compositor so B&W render doesn't re-trigger depth output
     if depth_output_path is not None:

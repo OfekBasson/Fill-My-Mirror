@@ -20,6 +20,8 @@ def render_with_blender(
     bw_output_path: str | Path,
     depth_output_path: str | Path | None = None,
     tmp_dir: str | Path | None = None,
+    backface_culling: bool = False,
+    frontface_culling: bool = False,
 ) -> None:
     blender_path = Path(blender_path)
     glb_path = Path(glb_path)
@@ -60,7 +62,13 @@ def render_with_blender(
         str(npz_path),
     ]
 
+    needs_extra = backface_culling or frontface_culling
     if depth_output_path is not None:
         command.append(str(depth_output_path))
+    elif needs_extra:
+        command.append("")  # placeholder so culling flags land at indices 5/6
+    if needs_extra:
+        command.append("1" if backface_culling else "0")
+        command.append("1" if frontface_culling else "0")
 
     subprocess.run(command, check=True)
