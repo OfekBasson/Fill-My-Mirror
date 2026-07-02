@@ -134,8 +134,9 @@ def _compute_rcs_mask(
     device: str,
     dilation_radius: int = 4,
     dilation_iterations: int = 1,
+    transforms: tuple[str, ...] = ("hflip", "rot180"),
 ) -> np.ndarray:
-    """Compute RCS mask (union of hflip + rot180 correspondences, dilated & intersected)."""
+    """Compute RCS mask (union of requested transforms' correspondences, dilated & intersected)."""
     from fill_my_mirror.evaluation.rcs_mask_computation import (
         _run_mast3r_correspondences,
         _dilate_and_intersect,
@@ -159,7 +160,7 @@ def _compute_rcs_mask(
     scene[mirror_mask] = 0
 
     combined_cs = np.zeros((CS, CS), dtype=bool)
-    for transform in ("hflip", "rot180"):
+    for transform in transforms:
         mirror = image_cs.copy()
         mirror[~mirror_mask] = 0
         if transform == "hflip":
@@ -197,18 +198,20 @@ def _ensure_rcs_mask(
     tmp_root: Path,
     mast3r_model_name: str,
     device: str,
+    rcs_filename: str = "rcs_mask.png",
+    transforms: tuple[str, ...] = ("hflip", "rot180"),
 ) -> Image.Image | None:
     """
     Return the RCS mask PIL image for this index.
     Downloads from R2 if already computed; otherwise computes it, saves locally,
-    and uploads to R2 under real/estimated_geometry/<index>/rcs_mask.png.
+    and uploads to R2 under real/estimated_geometry/<index>/<rcs_filename>.
     """
-    rcs_r2_key = f"{R2_BASE_PREFIX}/{index}/rcs_mask.png"
+    rcs_r2_key = f"{R2_BASE_PREFIX}/{index}/{rcs_filename}"
 
     if r2.key_exists(rcs_r2_key):
         d = tmp_root / str(index)
         d.mkdir(parents=True, exist_ok=True)
-        rcs_local = d / "rcs_mask.png"
+        rcs_local = d / rcs_filename
         try:
             r2.download_file(rcs_r2_key, rcs_local)
             logger.info("[%d] Loaded RCS mask from R2.", index)
@@ -236,14 +239,14 @@ def _ensure_rcs_mask(
     mirror_pil = Image.open(mirror_local).copy()
 
     try:
-        rcs_arr = _compute_rcs_mask(image_pil, mirror_pil, mast3r_model_name, device)
+        rcs_arr = _compute_rcs_mask(image_pil, mirror_pil, mast3r_model_name, device, transforms=transforms)
     except Exception:
         logger.warning("[%d] RCS computation failed.", index)
         traceback.print_exc()
         return None
 
     rcs_pil = Image.fromarray((rcs_arr.astype(np.uint8) * 255), mode="L")
-    rcs_local = d / "rcs_mask.png"
+    rcs_local = d / rcs_filename
     rcs_pil.save(rcs_local)
 
     try:
@@ -259,8 +262,8 @@ def _ensure_rcs_mask(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _r2_metrics_key(model_slug: str, index: int, seed: int) -> str:
-    return f"{R2_EVAL_PREFIX}/{model_slug}/{index}_seed_{seed}_metrics.json"
+def _r2_metrics_key(model_slug: str, index: int, seed: int, r2_eval_prefix: str = R2_EVAL_PREFIX) -> str:
+    return f"{r2_eval_prefix}/{model_slug}/{index}_seed_{seed}_metrics.json"
 
 
 def _upload_json(data: dict | list, r2_key: str, r2: R2Client) -> None:
@@ -367,11 +370,21 @@ def write_missing_report(
 # ---------------------------------------------------------------------------
 
 class _MaskCache:
-    def __init__(self, r2: R2Client, tmp_root: Path, mast3r_model_name: str, device: str):
+    def __init__(
+        self,
+        r2: R2Client,
+        tmp_root: Path,
+        mast3r_model_name: str,
+        device: str,
+        rcs_filename: str = "rcs_mask.png",
+        transforms: tuple[str, ...] = ("hflip", "rot180"),
+    ):
         self._r2 = r2
         self._tmp_root = tmp_root
         self._mast3r_model_name = mast3r_model_name
         self._device = device
+        self._rcs_filename = rcs_filename
+        self._transforms = transforms
         self._cache: dict[int, dict | None] = {}
 
     def get(self, index: int) -> dict | None:
@@ -394,6 +407,8 @@ class _MaskCache:
         rcs_pil = _ensure_rcs_mask(
             index, self._r2, self._tmp_root / "rcs",
             self._mast3r_model_name, self._device,
+            rcs_filename=self._rcs_filename,
+            transforms=self._transforms,
         )
         if rcs_pil is None:
             logger.warning("[%d] RCS mask unavailable — skipping.", index)
@@ -419,6 +434,7 @@ def evaluate_index_all_models(
     tmp_root: Path,
     skip_existing: bool,
     output_dir: Path,
+    r2_eval_prefix: str = R2_EVAL_PREFIX,
 ) -> dict[str, dict[int, dict]]:
     """Returns {slug: {seed: metrics_dict}}."""
     results: dict[str, dict[int, dict]] = {m["slug"]: {} for m in active_models}
@@ -428,7 +444,7 @@ def evaluate_index_all_models(
         cached_seed: dict[str, dict] = {}
 
         for m in active_models:
-            r2_key = _r2_metrics_key(m["slug"], index, seed)
+            r2_key = _r2_metrics_key(m["slug"], index, seed, r2_eval_prefix)
             if skip_existing and r2.key_exists(r2_key):
                 try:
                     with tempfile.NamedTemporaryFile(suffix=".json") as tf:
@@ -488,7 +504,7 @@ def evaluate_index_all_models(
             slug = row["name"]
             metrics = row.drop("name").to_dict()
             _save_json_local(metrics, output_dir / slug / f"{index}_seed_{seed}_metrics.json")
-            _upload_json(metrics, _r2_metrics_key(slug, index, seed), r2)
+            _upload_json(metrics, _r2_metrics_key(slug, index, seed, r2_eval_prefix), r2)
             results[slug][seed] = metrics
 
         for p in slug_to_local.values():
@@ -628,7 +644,7 @@ _PLOT_METRICS = [
 _PLOT_EXCLUDE_SLUGS = {"flux2_klein_vanilla"}
 
 
-def build_plots(summaries: list[dict], output_dir: Path, r2: R2Client) -> None:
+def build_plots(summaries: list[dict], output_dir: Path, r2: R2Client, r2_eval_prefix: str = R2_EVAL_PREFIX) -> None:
     """Bar chart: mean±SE across all (index, seed) pairs."""
     summaries = [s for s in summaries if s["model_slug"] not in _PLOT_EXCLUDE_SLUGS]
     model_names = [s["model_name"] for s in summaries]
@@ -668,11 +684,11 @@ def build_plots(summaries: list[dict], output_dir: Path, r2: R2Client) -> None:
     fig.savefig(local_pdf, format="pdf", bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved {local_pdf}")
-    r2.upload_file(local_pdf, f"{R2_EVAL_PREFIX}/comparison_plots.pdf")
-    print(f"  Uploaded {R2_EVAL_PREFIX}/comparison_plots.pdf")
+    r2.upload_file(local_pdf, f"{r2_eval_prefix}/comparison_plots.pdf")
+    print(f"  Uploaded {r2_eval_prefix}/comparison_plots.pdf")
 
 
-def build_seed_variance_plots(summaries: list[dict], output_dir: Path, r2: R2Client) -> None:
+def build_seed_variance_plots(summaries: list[dict], output_dir: Path, r2: R2Client, r2_eval_prefix: str = R2_EVAL_PREFIX) -> None:
     """Two-panel plots: per-seed breakdown + within-index seed variance."""
     summaries = [s for s in summaries if s["model_slug"] not in _PLOT_EXCLUDE_SLUGS]
     seeds_str = summaries[0].get("seeds_evaluated", []) if summaries else []
@@ -799,8 +815,8 @@ def build_seed_variance_plots(summaries: list[dict], output_dir: Path, r2: R2Cli
     fig.savefig(local_pdf, format="pdf", bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved {local_pdf}")
-    r2.upload_file(local_pdf, f"{R2_EVAL_PREFIX}/seed_variance_plots.pdf")
-    print(f"  Uploaded {R2_EVAL_PREFIX}/seed_variance_plots.pdf")
+    r2.upload_file(local_pdf, f"{r2_eval_prefix}/seed_variance_plots.pdf")
+    print(f"  Uploaded {r2_eval_prefix}/seed_variance_plots.pdf")
 
 
 # ---------------------------------------------------------------------------
@@ -874,13 +890,33 @@ def parse_args() -> argparse.Namespace:
                         help="Last index to evaluate (exclusive).")
     parser.add_argument("--device", type=str, default=None,
                         help="Torch device for MASt3R (cuda/cpu). Default: auto-detect.")
+    parser.add_argument(
+        "--hflip-only", action="store_true",
+        help=(
+            "Use horizontal-flip-only RCS masks (saved as rcs_mask_horizontal_only.png). "
+            "Results go to outputs/real_eval_hflip_only/ and real/evaluation_hflip_only/ in R2."
+        ),
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     seeds: list[int] = sorted(set(args.seeds))
-    output_dir: Path = args.output_dir
+
+    # RCS mask variant
+    if args.hflip_only:
+        rcs_filename = "rcs_mask_horizontal_only.png"
+        rcs_transforms: tuple[str, ...] = ("hflip",)
+        r2_eval_prefix = "real/evaluation_hflip_only"
+        default_output_dir = Path("outputs/real_eval_hflip_only")
+    else:
+        rcs_filename = "rcs_mask.png"
+        rcs_transforms = ("hflip", "rot180")
+        r2_eval_prefix = R2_EVAL_PREFIX
+        default_output_dir = Path("outputs/real_eval")
+
+    output_dir: Path = args.output_dir if args.output_dir != Path("outputs/real_eval") else default_output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     active_models = MODELS
@@ -909,7 +945,7 @@ def main() -> None:
             index_seed_metrics = _load_existing_metrics(m, present[slug], seeds, r2)
             summary = build_summary(m, index_seed_metrics, seeds)
             _save_json_local(summary, output_dir / slug / "summary.json")
-            _upload_json(summary, f"{R2_EVAL_PREFIX}/{slug}/summary.json", r2)
+            _upload_json(summary, f"{r2_eval_prefix}/{slug}/summary.json", r2)
             all_summaries.append(summary)
     else:
         import torch
@@ -935,7 +971,10 @@ def main() -> None:
 
         with tempfile.TemporaryDirectory(prefix="real_eval_") as tmp_str:
             tmp_root = Path(tmp_str)
-            mask_cache = _MaskCache(r2, tmp_root / "masks", mast3r_model_name, device)
+            mask_cache = _MaskCache(
+                r2, tmp_root / "masks", mast3r_model_name, device,
+                rcs_filename=rcs_filename, transforms=rcs_transforms,
+            )
 
             for i, index in enumerate(all_active_indices):
                 masks = mask_cache.get(index)
@@ -971,6 +1010,7 @@ def main() -> None:
                     tmp_root=tmp_root / "imgs",
                     skip_existing=args.skip_existing,
                     output_dir=output_dir,
+                    r2_eval_prefix=r2_eval_prefix,
                 )
                 for slug, seed_metrics in results.items():
                     if seed_metrics:
@@ -996,7 +1036,7 @@ def main() -> None:
         for m in active_models:
             summary = build_summary(m, index_seed_metrics_by_model[m["slug"]], seeds)
             _save_json_local(summary, output_dir / m["slug"] / "summary.json")
-            _upload_json(summary, f"{R2_EVAL_PREFIX}/{m['slug']}/summary.json", r2)
+            _upload_json(summary, f"{r2_eval_prefix}/{m['slug']}/summary.json", r2)
             all_summaries.append(summary)
             print(f"  Summary saved for {m['name']}")
 
@@ -1010,14 +1050,14 @@ def main() -> None:
     table.to_csv(table_path, index=False, float_format="%.4f")
     print(f"  Saved {table_path}")
     print("\n" + table.to_string(index=False, float_format=lambda x: f"{x:.4f}" if x is not None else "N/A"))
-    r2.upload_file(table_path, f"{R2_EVAL_PREFIX}/comparison_table.csv")
-    print(f"  Uploaded {R2_EVAL_PREFIX}/comparison_table.csv")
+    r2.upload_file(table_path, f"{r2_eval_prefix}/comparison_table.csv")
+    print(f"  Uploaded {r2_eval_prefix}/comparison_table.csv")
 
     print("\nBuilding comparison plots...")
-    build_plots(all_summaries, output_dir, r2)
+    build_plots(all_summaries, output_dir, r2, r2_eval_prefix=r2_eval_prefix)
 
     print("\nBuilding seed variance plots...")
-    build_seed_variance_plots(all_summaries, output_dir, r2)
+    build_seed_variance_plots(all_summaries, output_dir, r2, r2_eval_prefix=r2_eval_prefix)
 
     print("\nDone.")
 
