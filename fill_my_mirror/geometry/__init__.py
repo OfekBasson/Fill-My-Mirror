@@ -5,7 +5,9 @@ from .core import (
     GeometryOutputMultipleMirrors,
     GeometryProcessorBase,
     MoGeGeometryProcessor,
+    MoGeDepthDegradationProcessor,
     BlenderGeometryProcessor,
     estimate_geometry,
     LowFiniteMirrorPointsRatioError,
 )
+from .utils import align_depth_ls, unproject_depth

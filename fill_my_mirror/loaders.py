@@ -40,6 +40,18 @@ class GTGeometrySample(Sample):
     intrinsics: np.ndarray = None
 
 
+@dataclass
+class DepthDegradedSample(GTGeometrySample):
+    """GTGeometrySample annotated with depth-degradation parameters.
+
+    lam=0 → pure GT depth; lam=1 → MoGe estimate; lam>1 → extrapolated.
+    image_id is the stable dataset index used to cache the MoGe result across
+    multiple lambda values for the same image.
+    """
+    lam: float = 0.0
+    image_id: int = 0
+
+
 class SampleLoader(ABC):
     @abstractmethod
     def __len__(self) -> int: ...

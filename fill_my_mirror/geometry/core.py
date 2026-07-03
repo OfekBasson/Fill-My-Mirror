@@ -11,12 +11,18 @@ from PIL import Image
 import utils3d
 from moge.model.v2 import MoGeModel
 
-from fill_my_mirror.loaders import Sample, EstimatedGeometrySample, GTGeometrySample
+import logging
+
+from fill_my_mirror.loaders import Sample, EstimatedGeometrySample, GTGeometrySample, DepthDegradedSample
 from fill_my_mirror.plane import Plane, fit_plane_svd, orient_plane_toward_camera
+from fill_my_mirror.geometry.utils import align_depth_ls, unproject_depth
 
 
 TEMP_OUTPUT_DIR = Path("temp_outputs")
 TEMP_OUTPUT_DIR.mkdir(exist_ok=True)
+
+logger = logging.getLogger(__name__)
+
 
 _MIN_FINITE_RATIO = 0.01
 
@@ -348,6 +354,87 @@ GEOMETRY_MODEL_REGISTRY: dict[str, type] = {
     "depth-anything/DA3NESTED-GIANT-LARGE-1.1": DepthAnythingGeometryProcessor,
 
 }
+
+
+class MoGeDepthDegradationProcessor(GeometryProcessorBase):
+    """Runs MoGe depth estimation on a GT-geometry sample, aligns it to GT scale via
+    least-squares, then blends at ratio λ before building the scene mesh.
+
+    Intended for the depth-degradation sweep experiment:
+      λ=0  →  pure GT depth  (same output as BlenderGeometryProcessor)
+      λ=1  →  MoGe estimate aligned to GT scale
+      λ>1  →  extrapolated beyond the MoGe estimate
+
+    MoGe inference is cached by sample.image_id so iterating over multiple λ
+    values for the same image only pays the cost of one forward pass.
+
+    Usage::
+
+        proc = MoGeDepthDegradationProcessor("Ruicheng/moge-2-vitl-normal")
+        for lam in [0.0, 0.5, 1.0]:
+            sample = DepthDegradedSample(..., lam=lam, image_id=idx)
+            geom = proc.get_geometry(sample, tmp_dir=lam_dir)
+    """
+
+    def __init__(self, model_name: str):
+        self._moge = MoGeGeometryProcessor(model_name)
+        # Cache: image_id → LS-aligned MoGe depth (same spatial shape as GT depth)
+        self._aligned_depth_cache: dict[int, np.ndarray] = {}
+
+    def get_geometry(
+        self,
+        sample: DepthDegradedSample,
+        tmp_dir: Path | None = None,
+    ) -> GeometryOutputSingleMirror:
+        d_est_aligned = self._get_aligned_moge_depth(sample, tmp_dir=tmp_dir)
+
+        d_lam = np.clip(
+            (1.0 - sample.lam) * sample.depth.astype(np.float32) + sample.lam * d_est_aligned,
+            1e-4,
+            None,
+        ).astype(np.float32)
+
+        blended_sample = GTGeometrySample(
+            image_path=sample.image_path,
+            mask_path=sample.mask_path,
+            gt_image_path=sample.gt_image_path,
+            prompt=sample.prompt,
+            points=unproject_depth(d_lam, sample.intrinsics),
+            depth=d_lam,
+            intrinsics=sample.intrinsics,
+        )
+        return BlenderGeometryProcessor().get_geometry(blended_sample, tmp_dir=tmp_dir)
+
+    def _get_aligned_moge_depth(
+        self,
+        sample: DepthDegradedSample,
+        tmp_dir: Path | None,
+    ) -> np.ndarray:
+        if sample.image_id in self._aligned_depth_cache:
+            return self._aligned_depth_cache[sample.image_id]
+
+        est_sample = EstimatedGeometrySample(
+            image_path=sample.image_path,
+            mask_path=sample.mask_path,
+            prompt=sample.prompt,
+            gt_image_path=sample.gt_image_path,
+        )
+        # Place MoGe outputs at the image level (sibling of all lam_* dirs).
+        moge_tmp = (Path(tmp_dir).parent.parent / "moge") if tmp_dir else TEMP_OUTPUT_DIR / "moge"
+        moge_tmp.mkdir(parents=True, exist_ok=True)
+        moge_out = self._moge.get_geometry(est_sample, tmp_dir=moge_tmp)
+
+        d_gt = sample.depth.astype(np.float32)
+        d_est = moge_out.depth.astype(np.float32)
+        if d_est.shape != d_gt.shape:
+            d_est = cv2.resize(d_est, (d_gt.shape[1], d_gt.shape[0]), interpolation=cv2.INTER_LINEAR)
+
+        scale, shift = align_depth_ls(d_est, d_gt)
+        logger.info("idx=%d MoGe depth alignment: scale=%.4f  shift=%.4f", sample.image_id, scale, shift)
+        d_est_aligned = np.clip(d_est * scale + shift, 1e-4, None).astype(np.float32)
+
+        self._aligned_depth_cache[sample.image_id] = d_est_aligned
+        return d_est_aligned
 
 
 def estimate_geometry(sample: Sample, model_name: str, tmp_dir: Path | None = None) -> GeometryOutputBase:
