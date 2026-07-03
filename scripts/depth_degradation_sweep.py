@@ -27,17 +27,20 @@ Outputs (local and uploaded to R2 under experiments/depth_degradation_sweep/<run
 
 Usage
 -----
-    python scripts/depth_degradation_sweep.py \\
-        --start-index 0 --end-index 20 \\
-        --output-dir /tmp/depth_sweep
+    python scripts/depth_degradation_sweep.py --num-samples 20 --output-dir /tmp/depth_sweep
 
     # Multi-GPU, custom seed and run name:
     python scripts/depth_degradation_sweep.py \\
-        --start-index 0 --end-index 50 \\
+        --num-samples 50 \\
         --seed 42 \\
         --num-gpus 2 \\
         --run-name my_run \\
         --output-dir /tmp/depth_sweep
+
+--num-samples counts *successfully evaluated* images: indices are consumed
+starting from --start-index and images that fail to load or get abandoned
+(e.g. LowFiniteMirrorPointsRatioError) don't count against the total and are
+simply skipped over.
 """
 
 from __future__ import annotations
@@ -67,7 +70,7 @@ from fill_my_mirror.evaluation.metrics_computation import (
     MetricsInput,
     compute_metrics,
 )
-from fill_my_mirror.geometry.core import MoGeDepthDegradationProcessor
+from fill_my_mirror.geometry.core import LowFiniteMirrorPointsRatioError, MoGeDepthDegradationProcessor
 from fill_my_mirror.loaders import MirrorBenchV2SampleLoader, DepthDegradedSample
 from fill_my_mirror.projection import run_projection_single_mirror
 from fill_my_mirror.storage import R2Client
@@ -96,6 +99,7 @@ R2_EXPERIMENT_PREFIX = "experiments/depth_degradation_sweep"
 def _worker(
     gpu_id: int,
     indices: list[int],
+    target_successes: int,
     args_dict: dict,
     config: dict,
 ) -> None:
@@ -127,6 +131,8 @@ def _worker(
     else:
         rows = []
         already_done = set()
+
+    num_successes = len(already_done)
 
     # gpu_id=0 because CUDA_VISIBLE_DEVICES already restricts to one device.
     # MoGeDepthDegradationProcessor loads MoGe once and caches per-image depth alignment.
@@ -175,6 +181,7 @@ def _worker(
 
         # ---- Iterate over lambdas ------------------------------------------
         # MoGe runs on the first lambda and is cached for the rest.
+        image_abandoned = False
         for lam in LAMBDAS:
             label = f"[GPU {gpu_id}] idx={idx} λ={lam}"
             lam_dir = output_dir / str(idx) / f"lam_{lam:.2f}"
@@ -204,6 +211,13 @@ def _worker(
                     geometry_constraint_mask_path=lam_dir / "geometry_constraint_mask.png",
                     tmp_dir=lam_dir / "blender",
                 )
+            except LowFiniteMirrorPointsRatioError:
+                logger.warning(
+                    "%s: too few finite mirror points, abandoning image %d:\n%s",
+                    label, idx, traceback.format_exc(),
+                )
+                image_abandoned = True
+                break
             except Exception:
                 logger.warning("%s: projection failed:\n%s", label, traceback.format_exc())
                 continue
@@ -297,12 +311,21 @@ def _worker(
             print(f"  {label}: done")
             rows.append(row)
 
+        if image_abandoned:
+            continue
+
         # Queue this image's output directory for upload
         idx_dir = output_dir / str(idx)
         pending_upload.append((idx_dir, f"{r2_prefix}/{idx}"))
 
         if len(pending_upload) >= upload_every:
             flush()
+
+        if any(r["image_id"] == idx for r in rows):
+            num_successes += 1
+            if target_successes is not None and num_successes >= target_successes:
+                print(f"[GPU {gpu_id}] Reached target of {target_successes} successful images, stopping.")
+                break
 
     flush()
 
@@ -440,11 +463,15 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--start-index", type=int, default=0,
-        help="First dataset index (inclusive).",
+        help="First dataset index to consider (inclusive).",
     )
     parser.add_argument(
-        "--end-index", type=int, default=20,
-        help="Last dataset index (exclusive).",
+        "--num-samples", type=int, default=20,
+        help="Number of images to successfully evaluate. Indices are consumed "
+             "starting from --start-index until this many images produce at "
+             "least one usable result row (images that fail to load, or that "
+             "are abandoned due to LowFiniteMirrorPointsRatioError, don't count "
+             "and are skipped over) or the dataset is exhausted.",
     )
     parser.add_argument(
         "--seed", type=int, default=DEFAULT_SEED,
@@ -492,8 +519,11 @@ def main() -> None:
 
     loader = MirrorBenchV2SampleLoader()
     dataset_size = len(loader)
-    end = min(args.end_index, dataset_size)
-    indices = list(range(args.start_index, end))
+    # All indices from start_index to the end of the dataset are made available
+    # to workers; each worker stops early once it hits its target number of
+    # successful images, so --num-samples always means "N successful images"
+    # rather than "N attempts" (some indices may fail to load or get abandoned).
+    indices = list(range(args.start_index, dataset_size))
 
     num_gpus = args.num_gpus or torch.cuda.device_count() or 1
 
@@ -501,7 +531,8 @@ def main() -> None:
 
     print(f"Run name     : {args.run_name}")
     print(f"Dataset size : {dataset_size}")
-    print(f"Range        : [{args.start_index}, {end})")
+    print(f"Start index  : {args.start_index}")
+    print(f"Num samples  : {args.num_samples}")
     print(f"Lambdas      : {LAMBDAS}")
     print(f"Seed         : {args.seed}")
     print(f"GPUs         : {num_gpus}")
@@ -518,17 +549,18 @@ def main() -> None:
     }
 
     if num_gpus == 1:
-        _worker(0, indices, args_dict, config)
+        _worker(0, indices, args.num_samples, args_dict, config)
     else:
         chunk = (len(indices) + num_gpus - 1) // num_gpus
         chunks = [indices[i * chunk:(i + 1) * chunk] for i in range(num_gpus)]
+        per_worker_target = (args.num_samples + num_gpus - 1) // num_gpus
         processes = []
         for gpu_id, chunk_indices in enumerate(chunks):
             if not chunk_indices:
                 continue
             p = multiprocessing.Process(
                 target=_worker,
-                args=(gpu_id, chunk_indices, args_dict, config),
+                args=(gpu_id, chunk_indices, per_worker_target, args_dict, config),
             )
             p.start()
             processes.append(p)

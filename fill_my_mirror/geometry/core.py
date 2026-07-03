@@ -136,6 +136,7 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
 
     def _get_geometry_single_mirror(self, sample: EstimatedGeometrySample, tmp_dir: Path | None = None) -> GeometryOutputSingleMirror:
         tmp_dir = tmp_dir or TEMP_OUTPUT_DIR
+        tmp_dir.mkdir(parents=True, exist_ok=True)
         image = cv2.imread(sample.image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
@@ -194,6 +195,7 @@ class MoGeGeometryProcessor(GeometryProcessorBase):
 
     def _get_geometry_multiple_mirrors(self, sample: EstimatedGeometrySample, tmp_dir: Path | None = None) -> GeometryOutputMultipleMirrors:
         tmp_dir = tmp_dir or TEMP_OUTPUT_DIR
+        tmp_dir.mkdir(parents=True, exist_ok=True)
         image = cv2.imread(sample.image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
@@ -465,6 +467,7 @@ class BlenderGeometryProcessor(GeometryProcessorBase):
             f"BlenderGeometryProcessor expects a BlenderSample, got {type(sample).__name__}"
         )
         tmp_dir = tmp_dir or TEMP_OUTPUT_DIR
+        tmp_dir.mkdir(parents=True, exist_ok=True)
 
         image = cv2.imread(sample.image_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
