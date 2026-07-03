@@ -404,8 +404,10 @@ python scripts/download_mirrorbench_v2.py
 To download and extract a single batch only:
 
 ```bash
-python scripts/download_mirrorbench_v2.py --batch 0
+python scripts/download_mirrorbench_v2.py --batch 1
 ```
+
+Note: batch indices start at 1 (there is no `batch_0.tar`); valid values are 1-35.
 
 After extraction the directory should look like:
 
