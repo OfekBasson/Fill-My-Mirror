@@ -86,7 +86,7 @@ WITHOUT_T: float = 0.0    # WITHOUT interpolation (t_prime=0 ⟹ condition never
 
 DEFAULT_CONFIG = Path("configs/config.yaml")
 DEFAULT_SEED = 0
-DEFAULT_UPLOAD_EVERY = 5  # flush R2 uploads after this many images
+DEFAULT_UPLOAD_EVERY = 1  # flush R2 uploads after this many images
 
 R2_EXPERIMENT_PREFIX = "experiments/depth_degradation_sweep"
 
