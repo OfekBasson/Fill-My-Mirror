@@ -1,9 +1,9 @@
 """
-Pipeline Timing Benchmark
-=========================
-Runs the full Fill-My-Mirror pipeline (geometry estimation → Blender projection →
-diffusion inpainting) on all 50 real images with one seed, timing each step
-separately and recording peak GPU memory usage.
+Vanilla FLUX.1 Fill Timing Benchmark
+=====================================
+Runs plain FLUX.1-Fill-dev inpainting (no geometry estimation, no Blender
+projection, no dual-mask/projection components) on the real images, timing
+the inpainting step and recording peak GPU memory usage.
 
 Input assets are downloaded from R2 under real/estimated_geometry/<idx>/:
   original_image.png
@@ -21,11 +21,11 @@ Aggregated outputs:
 Usage
 -----
     # Quick test on 2 samples:
-    conda run -n fill-my-mirror python scripts/benchmark_pipeline_timing.py --indices 0 1 --output-dir outputs/timing_benchmark_test
+    conda run -n fill-my-mirror python scripts/benchmark_pipeline_timing_vanilla_flux_fill.py --indices 0 1 --output-dir outputs/timing_benchmark_vanilla_test
 
     # Full run (all 50 real images):
-    conda run -n fill-my-mirror python scripts/benchmark_pipeline_timing.py \\
-        --output-dir outputs/timing_benchmark --skip-existing
+    conda run -n fill-my-mirror python scripts/benchmark_pipeline_timing_vanilla_flux_fill.py \\
+        --output-dir outputs/timing_benchmark_vanilla --skip-existing
 """
 
 from __future__ import annotations
@@ -44,10 +44,9 @@ import numpy as np
 import pandas as pd
 import torch
 import yaml
+from diffusers import FluxFillPipeline
+from diffusers.utils import load_image
 
-from fill_my_mirror.geometry import estimate_geometry
-from fill_my_mirror.projection import run_projection_single_mirror
-from fill_my_mirror.dual_mask_inpainting import load_inpainting_pipeline, run_dual_mask_inpainting
 from fill_my_mirror.loaders import EstimatedGeometrySample
 from fill_my_mirror.storage import R2Client
 from fill_my_mirror.utils import check_and_fix_aspect_ratio
@@ -55,6 +54,7 @@ from fill_my_mirror.utils import check_and_fix_aspect_ratio
 DEFAULT_CONFIG_PATH = Path("configs/config.yaml")
 R2_PROJ_PREFIX = "real/estimated_geometry"
 N_REAL_IMAGES = 50
+INPAINTING_MODEL_NAME = "black-forest-labs/FLUX.1-Fill-dev"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -71,19 +71,28 @@ def _gpu_mb() -> float:
     return torch.cuda.max_memory_allocated() / 1e9
 
 
+def load_vanilla_pipeline(gpu_id: int = 0) -> FluxFillPipeline:
+    pipe = FluxFillPipeline.from_pretrained(
+        INPAINTING_MODEL_NAME,
+        torch_dtype=torch.bfloat16,
+    )
+    pipe.enable_model_cpu_offload(gpu_id=gpu_id)
+    return pipe
+
+
 def benchmark_sample(
     idx: int,
     r2: R2Client,
-    pipe,
+    pipe: FluxFillPipeline,
     config: dict,
-    blender_path: Path,
     output_dir: Path,
     args: argparse.Namespace,
 ) -> dict:
     sample_dir = output_dir / f"sample_{idx}"
     sample_dir.mkdir(parents=True, exist_ok=True)
 
-    tmp = Path(tempfile.mkdtemp(prefix=f"fmm_bench_{idx}_"))
+    tmp = Path(tempfile.mkdtemp(prefix=f"fmm_bench_vanilla_{idx}_"))
+    t0 = time.perf_counter()
     try:
         # Download inputs from R2
         r2.download_file(f"{R2_PROJ_PREFIX}/{idx}/original_image.png", tmp / "image.png")
@@ -103,72 +112,47 @@ def benchmark_sample(
         )
         width = check_and_fix_aspect_ratio(sample.image_path, int(args.height), int(args.width))
 
+        image = load_image(sample.image_path).convert("RGB")
+        mask = load_image(sample.mask_path).convert("L")
+        if mask.size != image.size:
+            mask = mask.resize(image.size)
+
         torch.cuda.reset_peak_memory_stats()
 
-        # Step 1: Geometry estimation
-        t0 = time.perf_counter()
-        geometry = estimate_geometry(sample, config["geometry_model_name"])
-        t1 = time.perf_counter()
-        geometry_time_s = t1 - t0
-        geometry_peak_gpu_gb = _gpu_mb()
-        torch.cuda.reset_peak_memory_stats()
-        gc.collect()
-        torch.cuda.empty_cache()
+        generator = torch.Generator("cuda").manual_seed(args.seed)
 
-        # Step 2: Blender projection
-        projection = run_projection_single_mirror(
-            geometry_output=geometry,
-            image_path=sample.image_path,
-            mirror_mask_path=sample.mask_path,
-            blender_path=blender_path,
-            tmp_dir=tmp / "projection",
-        )
-        t2 = time.perf_counter()
-        projection_time_s = t2 - t1
-        projection_peak_gpu_gb = _gpu_mb()
-        torch.cuda.reset_peak_memory_stats()
-
-        # Step 3: Diffusion inpainting
-        run_dual_mask_inpainting(
+        # Vanilla FLUX.1 Fill inpainting (no geometry, no projection, no dual mask)
+        result = pipe(
             prompt=prompt,
-            projected_image_path=projection.projected_image_path,
-            geometry_constraint_mask_path=projection.geometry_constraint_mask_path,
-            generative_refinement_mask_path=sample.mask_path,
-            output_path=sample_dir / "result.png",
-            original_image_path=sample.image_path,
-            model_name=config["inpainting_model_name"],
+            image=image,
+            mask_image=mask,
+            height=int(args.height),
+            width=width,
             strength=args.strength,
             num_inference_steps=args.num_inference_steps,
             guidance_scale=args.guidance_scale,
-            seed=args.seed,
-            height=args.height,
-            width=width,
-            n=args.n,
-            t_prime=args.t_prime,
-            pipe=pipe,
+            generator=generator,
+            max_sequence_length=args.max_sequence_length,
         )
-        t3 = time.perf_counter()
-        inpainting_time_s = t3 - t2
+        t1 = time.perf_counter()
+        inpainting_time_s = t1 - t0
         inpainting_peak_gpu_gb = _gpu_mb()
+
+        final_image = result.images[0]
+        final_image.save(sample_dir / "result.png")
 
         result = {
             "index": idx,
-            "geometry_time_s": round(geometry_time_s, 2),
-            "projection_time_s": round(projection_time_s, 2),
             "inpainting_time_s": round(inpainting_time_s, 2),
-            "total_time_s": round(t3 - t0, 2),
-            "geometry_peak_gpu_gb": round(geometry_peak_gpu_gb, 2),
-            "projection_peak_gpu_gb": round(projection_peak_gpu_gb, 2),
+            "total_time_s": round(t1 - t0, 2),
             "inpainting_peak_gpu_gb": round(inpainting_peak_gpu_gb, 2),
-            "overall_peak_gpu_gb": round(
-                max(geometry_peak_gpu_gb, projection_peak_gpu_gb, inpainting_peak_gpu_gb), 2
-            ),
+            "overall_peak_gpu_gb": round(inpainting_peak_gpu_gb, 2),
             "error": False,
         }
         logger.info(
-            "[%d] geom=%.1fs  proj=%.1fs  inpaint=%.1fs  total=%.1fs  peak_gpu=%.1fGB",
+            "[%d] inpaint=%.1fs  total=%.1fs  peak_gpu=%.1fGB",
             idx,
-            geometry_time_s, projection_time_s, inpainting_time_s, t3 - t0,
+            inpainting_time_s, t1 - t0,
             result["overall_peak_gpu_gb"],
         )
 
@@ -178,18 +162,16 @@ def benchmark_sample(
         (sample_dir / "error.txt").write_text(traceback.format_exc())
         result = {
             "index": idx,
-            "geometry_time_s": None,
-            "projection_time_s": None,
             "inpainting_time_s": None,
-            "total_time_s": round(t_now - t0, 2) if "t0" in dir() else None,
-            "geometry_peak_gpu_gb": None,
-            "projection_peak_gpu_gb": None,
+            "total_time_s": round(t_now - t0, 2),
             "inpainting_peak_gpu_gb": None,
             "overall_peak_gpu_gb": None,
             "error": True,
             "error_message": f"{type(exc).__name__}: {exc}",
         }
     finally:
+        gc.collect()
+        torch.cuda.empty_cache()
         shutil.rmtree(tmp, ignore_errors=True)
 
     (sample_dir / "timing.json").write_text(json.dumps(result, indent=2))
@@ -208,16 +190,15 @@ def _summarize(values: list[float]) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Benchmark full pipeline timing on all real images.",
+        description="Benchmark vanilla FLUX.1 Fill timing on all real images.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--output-dir", type=str, default="outputs/timing_benchmark")
+    parser.add_argument("--output-dir", type=str, default="outputs/timing_benchmark_vanilla")
     parser.add_argument("--config", type=str, default=str(DEFAULT_CONFIG_PATH))
-    parser.add_argument("--blender-path", type=str, default=None)
     parser.add_argument(
         "--indices", type=int, nargs="*", default=None,
-        help="Specific indices to process. Default: all 0–49.",
+        help="Specific indices to process. Default: all 0-49.",
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--height", type=float, default=1024)
@@ -225,8 +206,7 @@ def main() -> None:
     parser.add_argument("--strength", type=float, default=1.0)
     parser.add_argument("--num-inference-steps", type=int, default=30)
     parser.add_argument("--guidance-scale", type=float, default=30.0)
-    parser.add_argument("--n", type=float, default=6.0)
-    parser.add_argument("--t-prime", type=float, default=750.0)
+    parser.add_argument("--max-sequence-length", type=int, default=512)
     parser.add_argument(
         "--skip-existing", action="store_true",
         help="Skip samples where timing.json already exists.",
@@ -237,23 +217,18 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     config = load_config(Path(args.config))
-    blender_path = Path(args.blender_path) if args.blender_path else Path(config["blender_path"])
-    if not blender_path.exists():
-        raise FileNotFoundError(
-            f"Blender not found at {blender_path}. Run: bash scripts/install_blender.sh"
-        )
 
     indices = args.indices if args.indices is not None else list(range(N_REAL_IMAGES))
 
     print(f"Output dir : {output_dir}")
     print(f"Seed       : {args.seed}")
-    print(f"Indices    : {len(indices)} samples ({indices[0]}–{indices[-1]})")
+    print(f"Indices    : {len(indices)} samples ({indices[0]}-{indices[-1]})")
     print()
 
     r2 = R2Client()
 
-    print("Loading inpainting pipeline ...")
-    pipe = load_inpainting_pipeline(model_name=config["inpainting_model_name"])
+    print("Loading vanilla FLUX.1 Fill pipeline ...")
+    pipe = load_vanilla_pipeline()
     print("Pipeline loaded.\n")
 
     rows: list[dict] = []
@@ -267,7 +242,7 @@ def main() -> None:
             continue
 
         print(f"[{i + 1}/{total}] index {idx} ...")
-        result = benchmark_sample(idx, r2, pipe, config, blender_path, output_dir, args)
+        result = benchmark_sample(idx, r2, pipe, config, output_dir, args)
         rows.append(result)
 
     # Aggregate
@@ -284,9 +259,8 @@ def main() -> None:
     df.to_csv(output_dir / "timing_summary.csv", index=False)
 
     timing_fields = [
-        "geometry_time_s", "projection_time_s", "inpainting_time_s", "total_time_s",
-        "geometry_peak_gpu_gb", "projection_peak_gpu_gb", "inpainting_peak_gpu_gb",
-        "overall_peak_gpu_gb",
+        "inpainting_time_s", "total_time_s",
+        "inpainting_peak_gpu_gb", "overall_peak_gpu_gb",
     ]
     summary: dict = {"n_samples": n_ok, "n_errors": n_err}
     for field in timing_fields:
@@ -298,7 +272,7 @@ def main() -> None:
 
     col_w = 30
     print("\n" + "=" * 65)
-    print(f"Pipeline Timing Benchmark  (N={n_ok} real images, seed={args.seed})")
+    print(f"Vanilla FLUX.1 Fill Timing Benchmark  (N={n_ok} real images, seed={args.seed})")
     print(f"{'':>{col_w}}{'mean':>8}{'std':>8}{'min':>8}{'max':>8}")
     print("-" * 65)
     for field in timing_fields:
