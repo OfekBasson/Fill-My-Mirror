@@ -7,6 +7,10 @@ geometry_model_name: "Ruicheng/moge-2-vitl-normal"
 inpainting_model_name: "black-forest-labs/FLUX.1-Fill-dev"
 mast3r_model_name: "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 
+
+hf_blender_dataset_repo: https://huggingface.com/datasets/OfekBassonResearch/Fill-My-Mirror-Blender
+hf_dataset_repo: https://huggingface.com/datasets/OfekBassonResearch/Fill-My-Mirror
+
 # MirrorBench V2
 mirrorbench_v2_data_root: "data/mirrorbench_v2"
 mirrorbench_v2_csv: "data/mirrorbench_v2/test.csv"

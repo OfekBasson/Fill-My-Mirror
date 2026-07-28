@@ -1,13 +1,12 @@
 """
 RCS Dilation Radius Sweep Experiment
 =====================================
-For every Blender sample, runs MASt3R twice:
+For every Blender sample, runs MASt3R once using the horizontally-flipped
+mirror view.
 
-  mirror_transform ∈ {hflip, rot180}
-
-Correspondence points from both runs are UNIONED into a single combined mask.
-The dilation radius is then swept on that combined mask and compared against
-the ground-truth geometry constraint mask.
+Correspondence points from that run form the combined mask. The dilation
+radius is then swept on that mask and compared against the ground-truth
+geometry constraint mask.
 
 The best radius is selected by F₀.₅ (β=0.5): weights precision 4× over recall.
 
@@ -56,7 +55,7 @@ from fill_my_mirror.evaluation.constrained_pixels_gt_geometry_mask_computation i
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-_TRANSFORMS: list[str] = ["hflip", "rot180"]
+_TRANSFORMS: list[str] = ["hflip"]
 
 # Default F-beta parameter — β=0.1 is conservative: minimises false positives
 _FBETA = 0.1
@@ -238,7 +237,7 @@ def process_sample(
     scene_arr = _build_scene(image_arr, mirror_mask)
 
     # ------------------------------------------------------------------
-    # 2. Run MASt3R for hflip and rot180; union the correspondence masks
+    # 2. Run MASt3R with horizontal flip only
     # ------------------------------------------------------------------
     combined_mask = np.zeros((H, W), dtype=bool)
 
@@ -277,10 +276,10 @@ def process_sample(
     # 3. Save the combined correspondence mask
     # ------------------------------------------------------------------
     n_combined = int(combined_mask.sum())
-    logger.info("[%d] Combined correspondences (hflip ∪ rot180): %d px", sample_idx, n_combined)
+    logger.info("[%d] Correspondences (hflip): %d px", sample_idx, n_combined)
     _save_mask(combined_mask, sample_dir / "combined_correspondence_mask.png")
     _save_overlay(image_arr, combined_mask, sample_dir / "overlay_combined_correspondence.png",
-                  title="Combined correspondences (hflip ∪ rot180)")
+                  title="Correspondences (hflip)")
 
     # ------------------------------------------------------------------
     # 4. Per-radius evaluation
@@ -423,7 +422,7 @@ def _write_summary_and_plots(metrics_df: pd.DataFrame, output_dir: Path, beta: f
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Sweep dilation radius for RCS mask tuning (hflip + rot180 transforms)."
+        description="Sweep dilation radius for RCS mask tuning (horizontal flip only)."
     )
     parser.add_argument("--config", type=str, default="configs/config.yaml")
     parser.add_argument(
@@ -449,7 +448,7 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--iterations", type=int, nargs="+", default=[2],
+        "--iterations", type=int, nargs="+", default=[0, 1, 2, 3, 4, 5, 6, 7],
         help="Dilation iteration counts to sweep (applied per radius). Default: 2.",
     )
     parser.add_argument(
@@ -494,7 +493,7 @@ def main() -> None:
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
-    loader  = BlenderSampleLoader(config["hf_blender_dataset_repo"])
+    loader  = BlenderSampleLoader()
     indices = args.indices if args.indices is not None else list(range(len(loader)))
 
     if args.redilate:
@@ -540,7 +539,7 @@ def main() -> None:
         )
 
         logger.info(
-            "Processing %d samples × 2 transforms (hflip, rot180) × %d radii × %d iteration counts",
+            "Processing %d samples (hflip only) × %d radii × %d iteration counts",
             len(indices), len(args.radii), len(args.iterations),
         )
 

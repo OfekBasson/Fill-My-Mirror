@@ -93,7 +93,7 @@ class RealImageSampleLoader(SampleLoader):
 class BlenderSampleLoader(SampleLoader):
 
     def __init__(self):
-        self._ds = load_dataset(BLENDER_HF_REPO, split="train")
+        self._ds = load_dataset(BLENDER_HF_REPO, data_files={"test": "data/test-*"})["test"]
 
     def __len__(self) -> int:
         return len(self._ds)
