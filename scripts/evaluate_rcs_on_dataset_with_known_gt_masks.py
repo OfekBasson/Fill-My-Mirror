@@ -62,7 +62,7 @@ from fill_my_mirror.storage import R2Client
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-DILATION_RADIUS = 4
+DILATION_RADIUS = 5
 DILATION_ITERATIONS = 1
 RCS_COMPUTE_SIZE = 800  # all RCS computation (dilation included) runs at this resolution
 

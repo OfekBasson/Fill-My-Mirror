@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 _TRANSFORMS: list[str] = ["hflip"]
 
 # Default F-beta parameter — β=0.1 is conservative: minimises false positives
-_FBETA = 0.1
+_FBETA = 0.5
 
 
 # ---------------------------------------------------------------------------

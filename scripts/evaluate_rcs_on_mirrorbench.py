@@ -57,7 +57,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 R2_PREFIX = "mirrorbench_v2/gt_geometry"
-DILATION_RADIUS = 4
+DILATION_RADIUS = 5
 DILATION_ITERATIONS = 1
 _TRANSFORMS = ["hflip"]
 # _TRANSFORMS = ["hflip", "rot180"]
