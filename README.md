@@ -7,6 +7,8 @@
 </div>
 <br>
 
+![Teaser](assets/teaser.jpg)
+
 ## Table of Contents
 - [Installation](#installation)
 - [Quick Start](#quick-start)
