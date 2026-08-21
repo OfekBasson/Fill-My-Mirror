@@ -9,14 +9,14 @@ Two subcommands are available:
         --gt data/real_images/gt_images/0.png \\
         --mask data/real_images/masks/0.png \\
         --save-dir eval/sample_0/ \\
-        [--rcs-dilation 5] [--prompt "A bedroom with a standing mirror"]
+        [--rcs-dilation 5] [--rcs-iterations 1] [--prompt "A bedroom with a standing mirror"]
 
 ``batch`` — evaluate a directory of results against the HuggingFace dataset:
     python scripts/evaluate.py batch \\
         --results-dir outputs/my_run/ \\
         --dataset real \\
         --output-dir outputs/eval/ \\
-        [--config configs/config.yaml] [--rcs-dilation 5]
+        [--config configs/config.yaml] [--rcs-dilation 5] [--rcs-iterations 1]
 
 For ``batch`` the script automatically picks the constraint mask method:
   - ``--dataset real``           → Reflection Consistency Score via MASt3R
@@ -75,6 +75,7 @@ def _run_local(args: argparse.Namespace, config: dict) -> None:
         mask_stem=generated_path.stem,
         mast3r_model_name=config["mast3r_model_name"],
         dilation_radius=args.rcs_dilation,
+        dilation_iterations=args.rcs_iterations,
     )
     constrained_mask = Image.open(constrained_mask_path).convert("L")
 
@@ -151,6 +152,7 @@ def _run_batch(args: argparse.Namespace, config: dict) -> None:
                 mask_stem=str(index),
                 mast3r_model_name=config["mast3r_model_name"],
                 dilation_radius=args.rcs_dilation,
+                dilation_iterations=args.rcs_iterations,
             )
         else:
             # Blender: use GT geometry
@@ -247,6 +249,10 @@ def main() -> None:
         help="Dilation radius for the RCS mask (default: 5).",
     )
     local_parser.add_argument(
+        "--rcs-iterations", type=int, default=1,
+        help="Dilation iterations for the RCS mask (default: 1).",
+    )
+    local_parser.add_argument(
         "--prompt", type=str, default=None,
         help="Text prompt for CLIP similarity.",
     )
@@ -271,6 +277,10 @@ def main() -> None:
     batch_parser.add_argument(
         "--rcs-dilation", type=int, default=5,
         help="Dilation radius for the RCS mask (default: 5).",
+    )
+    batch_parser.add_argument(
+        "--rcs-iterations", type=int, default=1,
+        help="Dilation iterations for the RCS mask (default: 1).",
     )
     batch_parser.add_argument(
         "--prompt", type=str, default=None,

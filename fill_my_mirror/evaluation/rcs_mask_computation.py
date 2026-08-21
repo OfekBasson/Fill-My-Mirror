@@ -70,7 +70,8 @@ def compute_rcs_mask(
     mask_stem: str,
     mast3r_model_name: str = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric",
     device: Optional[str] = None,
-    dilation_radius: int = 10,
+    dilation_radius: int = 5,
+    dilation_iterations: int = 1,
 ) -> Path:
     """
     Compute the Reflection Consistency Score mask and save it to disk.
@@ -97,8 +98,10 @@ def compute_rcs_mask(
     device : str, optional
         Torch device (e.g. ``"cuda"`` or ``"cpu"``). Defaults to CUDA if available.
     dilation_radius : int
-        Radius of the circular dilation kernel (kernel size = ``(2*r+1) × (2*r+1)``),
-        applied with ``iterations=2``. Set to 0 to disable dilation.
+        Radius of the circular dilation kernel (kernel size = ``(2*r+1) × (2*r+1)``).
+        Set to 0 to disable dilation.
+    dilation_iterations : int
+        Number of dilation iterations. Default is 1.
 
     Returns
     -------
@@ -151,7 +154,7 @@ def compute_rcs_mask(
             mask_stem,
         )
 
-    dilated = _dilate_and_intersect(correspondence_mask, mask_arr, dilation_radius)
+    dilated = _dilate_and_intersect(correspondence_mask, mask_arr, dilation_radius, iterations=dilation_iterations)
 
     save_path = Path("rcs_masks") / dataset_type / f"{mask_stem}.png"
     save_path.parent.mkdir(parents=True, exist_ok=True)

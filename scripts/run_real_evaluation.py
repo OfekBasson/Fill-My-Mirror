@@ -49,6 +49,10 @@ Regenerate summaries and plots from existing per-index JSONs:
 
 Specify a custom output directory:
     python scripts/run_real_evaluation.py --output-dir outputs/real_eval/
+
+Recompute RCS masks with a specific dilation config, overwriting any cached mask in R2
+(without --force-recompute-rcs, an existing cached rcs_mask.png in R2 is reused as-is):
+    python scripts/run_real_evaluation.py --rcs-dilation 5 --rcs-iterations 1 --force-recompute-rcs
 """
 
 from __future__ import annotations
@@ -132,7 +136,7 @@ def _compute_rcs_mask(
     mirror_mask_pil: Image.Image,
     mast3r_model_name: str,
     device: str,
-    dilation_radius: int = 4,
+    dilation_radius: int = 5,
     dilation_iterations: int = 1,
     transforms: tuple[str, ...] = ("hflip", "rot180"),
 ) -> np.ndarray:
@@ -200,6 +204,9 @@ def _ensure_rcs_mask(
     device: str,
     rcs_filename: str = "rcs_mask.png",
     transforms: tuple[str, ...] = ("hflip", "rot180"),
+    dilation_radius: int = 5,
+    dilation_iterations: int = 1,
+    force_recompute: bool = False,
 ) -> Image.Image | None:
     """
     Return the RCS mask PIL image for this index.
@@ -208,7 +215,7 @@ def _ensure_rcs_mask(
     """
     rcs_r2_key = f"{R2_BASE_PREFIX}/{index}/{rcs_filename}"
 
-    if r2.key_exists(rcs_r2_key):
+    if not force_recompute and r2.key_exists(rcs_r2_key):
         d = tmp_root / str(index)
         d.mkdir(parents=True, exist_ok=True)
         rcs_local = d / rcs_filename
@@ -239,7 +246,11 @@ def _ensure_rcs_mask(
     mirror_pil = Image.open(mirror_local).copy()
 
     try:
-        rcs_arr = _compute_rcs_mask(image_pil, mirror_pil, mast3r_model_name, device, transforms=transforms)
+        rcs_arr = _compute_rcs_mask(
+            image_pil, mirror_pil, mast3r_model_name, device,
+            dilation_radius=dilation_radius, dilation_iterations=dilation_iterations,
+            transforms=transforms,
+        )
     except Exception:
         logger.warning("[%d] RCS computation failed.", index)
         traceback.print_exc()
@@ -378,6 +389,9 @@ class _MaskCache:
         device: str,
         rcs_filename: str = "rcs_mask.png",
         transforms: tuple[str, ...] = ("hflip", "rot180"),
+        dilation_radius: int = 5,
+        dilation_iterations: int = 1,
+        force_recompute_rcs: bool = False,
     ):
         self._r2 = r2
         self._tmp_root = tmp_root
@@ -385,6 +399,9 @@ class _MaskCache:
         self._device = device
         self._rcs_filename = rcs_filename
         self._transforms = transforms
+        self._dilation_radius = dilation_radius
+        self._dilation_iterations = dilation_iterations
+        self._force_recompute_rcs = force_recompute_rcs
         self._cache: dict[int, dict | None] = {}
 
     def get(self, index: int) -> dict | None:
@@ -409,6 +426,9 @@ class _MaskCache:
             self._mast3r_model_name, self._device,
             rcs_filename=self._rcs_filename,
             transforms=self._transforms,
+            dilation_radius=self._dilation_radius,
+            dilation_iterations=self._dilation_iterations,
+            force_recompute=self._force_recompute_rcs,
         )
         if rcs_pil is None:
             logger.warning("[%d] RCS mask unavailable — skipping.", index)
@@ -897,6 +917,18 @@ def parse_args() -> argparse.Namespace:
             "Results go to outputs/real_eval_hflip_only/ and real/evaluation_hflip_only/ in R2."
         ),
     )
+    parser.add_argument("--rcs-dilation", type=int, default=5,
+                        help="Dilation radius for the RCS mask (default: 5).")
+    parser.add_argument("--rcs-iterations", type=int, default=1,
+                        help="Dilation iterations for the RCS mask (default: 1).")
+    parser.add_argument(
+        "--force-recompute-rcs", action="store_true",
+        help=(
+            "Recompute RCS masks even if one already exists in R2 under the same filename "
+            "(rcs_mask.png / rcs_mask_horizontal_only.png), overwriting it. Without this flag, "
+            "an existing cached mask is reused as-is regardless of --rcs-dilation/--rcs-iterations."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -974,6 +1006,8 @@ def main() -> None:
             mask_cache = _MaskCache(
                 r2, tmp_root / "masks", mast3r_model_name, device,
                 rcs_filename=rcs_filename, transforms=rcs_transforms,
+                dilation_radius=args.rcs_dilation, dilation_iterations=args.rcs_iterations,
+                force_recompute_rcs=args.force_recompute_rcs,
             )
 
             for i, index in enumerate(all_active_indices):
