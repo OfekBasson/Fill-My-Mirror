@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import tempfile
 import traceback
 from collections import defaultdict
@@ -392,6 +393,7 @@ def _build_and_upload_plots(
     nt_keys: list[tuple[str, str]],
     nt_stats: dict[tuple[str, str], dict],
     r2: R2Client,
+    local_plots_dir: Path | None = None,
 ) -> None:
     """Generate and upload PDF summary plots."""
 
@@ -424,33 +426,7 @@ def _build_and_upload_plots(
         return color_map.get(i, (0.7, 0.7, 0.7, 1.0))
 
     labels = [_nt_label(n, t) for n, t in nt_keys]
-    xs = np.arange(len(nt_keys))
 
-    # ------------------------------------------------------------------
-    # Plot 1: psnr_constrained vs gt_image
-    # ------------------------------------------------------------------
-    fig1, ax1 = plt.subplots(figsize=(max(8, len(nt_keys) * 0.8 + 2), 5))
-
-    best_color = _color(best_idx)
-    ax1.axhspan(best_mean - PSNR_THRESHOLD_DB, best_mean, alpha=0.15, color=best_color, zorder=0)
-    ax1.axhline(best_mean,                     color=best_color, linestyle="--", linewidth=1.2, zorder=1)
-    ax1.axhline(best_mean - PSNR_THRESHOLD_DB, color=best_color, linestyle=":",  linewidth=0.8, zorder=1)
-
-    for i, (x, m, se) in enumerate(zip(xs, means_gt, ses_gt)):
-        if np.isnan(m):
-            continue
-        ax1.errorbar(x, m, yerr=se, fmt="o", color=_color(i), capsize=4,
-                     capthick=1.5, markersize=7, zorder=3)
-
-    ax1.set_xticks(xs)
-    ax1.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
-    ax1.set_ylabel("PSNR constrained (dB)")
-    ax1.grid(axis="y", linestyle="--", alpha=0.4)
-    fig1.tight_layout()
-
-    # ------------------------------------------------------------------
-    # Plot 2: psnr_constrained vs projected_image (same x-order, same colors)
-    # ------------------------------------------------------------------
     colored_proj_vals = {
         i: means_proj[i]
         for i in colored_indices
@@ -458,46 +434,104 @@ def _build_and_upload_plots(
     }
     highlight_idx = min(colored_proj_vals, key=colored_proj_vals.get) if colored_proj_vals else None
 
-    fig2, ax2 = plt.subplots(figsize=(max(8, len(nt_keys) * 0.8 + 2), 5))
+    # Shared y-axis limits within each plot type (gt plots share one range, projected
+    # plots share another), so the 4 n-splits of each type are directly comparable.
+    def _ylim(lo_vals: np.ndarray, hi_vals: np.ndarray) -> tuple[float, float]:
+        y_lo = np.nanmin(lo_vals)
+        y_hi = np.nanmax(hi_vals)
+        y_margin = (y_hi - y_lo) * 0.05 or 1.0
+        return (y_lo - y_margin, y_hi + y_margin)
 
-    for i, (x, m, se) in enumerate(zip(xs, means_proj, ses_proj)):
-        if np.isnan(m):
-            continue
-        is_highlight = (i == highlight_idx)
-        ax2.errorbar(
-            x, m, yerr=se,
-            fmt="D" if is_highlight else "o",
-            color=_color(i),
-            capsize=4, capthick=1.5,
-            markersize=10 if is_highlight else 7,
-            zorder=3,
-            label=f"lowest proj PSNR among colored: {labels[i]}" if is_highlight else None,
-        )
+    ylim_gt = _ylim(
+        np.concatenate([means_gt - ses_gt, [best_mean - PSNR_THRESHOLD_DB]]),
+        np.concatenate([means_gt + ses_gt, [best_mean]]),
+    )
+    ylim_proj = _ylim(means_proj - ses_proj, means_proj + ses_proj)
 
-    if highlight_idx is not None:
-        ax2.axvline(highlight_idx, color=_color(highlight_idx),
-                    linestyle="--", linewidth=1.0, alpha=0.6, zorder=1)
+    # Split into one sub-plot per distinct n value, preserving global colors/best/highlight.
+    n_values = sorted({n for n, _ in nt_keys}, key=lambda n: _nt_sort_key((n, "0"))[0])
 
-    ax2.set_xticks(xs)
-    ax2.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
-    ax2.set_ylabel("PSNR constrained (dB)")
-    ax2.grid(axis="y", linestyle="--", alpha=0.4)
-    if highlight_idx is not None:
-        ax2.legend(fontsize=7, loc="lower left")
-    fig2.tight_layout()
+    for n_val in n_values:
+        group_indices = [i for i, (n, _t) in enumerate(nt_keys) if n == n_val]
+        group_xs = np.arange(len(group_indices))
+        group_labels = [labels[i] for i in group_indices]
 
-    # Upload both PDFs
-    for fig, fname in [(fig1, "psnr_vs_gt.pdf"), (fig2, "psnr_vs_projected.pdf")]:
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
-            tf_path = Path(tf.name)
-        try:
-            fig.savefig(tf_path, format="pdf", bbox_inches="tight")
-            r2_key = f"{MODEL_PREFIX}/{fname}"
-            r2.upload_file(tf_path, r2_key)
-            print(f"  [plots] uploaded {r2_key}")
-        finally:
-            tf_path.unlink(missing_ok=True)
-        plt.close(fig)
+        # ------------------------------------------------------------
+        # Plot 1: psnr_constrained vs gt_image
+        # ------------------------------------------------------------
+        fig1, ax1 = plt.subplots(figsize=(max(8, len(group_indices) * 0.8 + 2), 5))
+
+        best_color = _color(best_idx)
+        ax1.axhspan(best_mean - PSNR_THRESHOLD_DB, best_mean, alpha=0.15, color=best_color, zorder=0)
+        ax1.axhline(best_mean,                     color=best_color, linestyle="--", linewidth=1.2, zorder=1)
+        ax1.axhline(best_mean - PSNR_THRESHOLD_DB, color=best_color, linestyle=":",  linewidth=0.8, zorder=1)
+
+        for x, i in zip(group_xs, group_indices):
+            m, se = means_gt[i], ses_gt[i]
+            if np.isnan(m):
+                continue
+            ax1.errorbar(x, m, yerr=se, fmt="o", color=_color(i), capsize=4,
+                         capthick=1.5, markersize=7, zorder=3)
+
+        ax1.set_xticks(group_xs)
+        ax1.set_xticklabels(group_labels, rotation=45, ha="right", fontsize=8)
+        ax1.set_ylabel("PSNR constrained (dB)")
+        ax1.set_title(f"n={n_val}")
+        ax1.set_ylim(ylim_gt)
+        ax1.grid(axis="y", linestyle="--", alpha=0.4)
+        fig1.tight_layout()
+
+        # ------------------------------------------------------------
+        # Plot 2: psnr_constrained vs projected_image (same x-order, same colors)
+        # ------------------------------------------------------------
+        fig2, ax2 = plt.subplots(figsize=(max(8, len(group_indices) * 0.8 + 2), 5))
+
+        for x, i in zip(group_xs, group_indices):
+            m, se = means_proj[i], ses_proj[i]
+            if np.isnan(m):
+                continue
+            is_highlight = (i == highlight_idx)
+            ax2.errorbar(
+                x, m, yerr=se,
+                fmt="D" if is_highlight else "o",
+                color=_color(i),
+                capsize=4, capthick=1.5,
+                markersize=10 if is_highlight else 7,
+                zorder=3,
+                label=f"lowest proj PSNR among colored: {labels[i]}" if is_highlight else None,
+            )
+
+        if highlight_idx is not None and highlight_idx in group_indices:
+            ax2.axvline(group_indices.index(highlight_idx), color=_color(highlight_idx),
+                        linestyle="--", linewidth=1.0, alpha=0.6, zorder=1)
+
+        ax2.set_xticks(group_xs)
+        ax2.set_xticklabels(group_labels, rotation=45, ha="right", fontsize=8)
+        ax2.set_ylabel("PSNR constrained (dB)")
+        ax2.set_title(f"n={n_val}")
+        ax2.set_ylim(ylim_proj)
+        ax2.grid(axis="y", linestyle="--", alpha=0.4)
+        if highlight_idx is not None and highlight_idx in group_indices:
+            ax2.legend(fontsize=7, loc="lower left")
+        fig2.tight_layout()
+
+        # Upload both PDFs (and optionally save locally)
+        for fig, fname in [(fig1, f"psnr_vs_gt_n{n_val}.pdf"), (fig2, f"psnr_vs_projected_n{n_val}.pdf")]:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
+                tf_path = Path(tf.name)
+            try:
+                fig.savefig(tf_path, format="pdf", bbox_inches="tight")
+                r2_key = f"{MODEL_PREFIX}/{fname}"
+                r2.upload_file(tf_path, r2_key)
+                print(f"  [plots] uploaded {r2_key}")
+                if local_plots_dir is not None:
+                    local_plots_dir.mkdir(parents=True, exist_ok=True)
+                    local_path = local_plots_dir / fname
+                    shutil.copyfile(tf_path, local_path)
+                    print(f"  [plots] saved {local_path}")
+            finally:
+                tf_path.unlink(missing_ok=True)
+            plt.close(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +555,10 @@ def parse_args() -> argparse.Namespace:
             "regenerate ablation_summary.json and plots directly from existing "
             "per-(n,t) n_<n>_t_<t>_summary.json files already in R2"
         ),
+    )
+    parser.add_argument(
+        "--local-plots-dir", type=Path, default=None,
+        help="If set, also save generated plot PDFs to this local directory",
     )
     return parser.parse_args()
 
@@ -575,7 +613,7 @@ def main() -> None:
         }
         _upload_json(ablation, f"{MODEL_PREFIX}/ablation_summary.json", r2)
         print("Building and uploading plots...")
-        _build_and_upload_plots(nt_keys, nt_stats, r2)
+        _build_and_upload_plots(nt_keys, nt_stats, r2, local_plots_dir=args.local_plots_dir)
         print("\nDone.")
         return
 
@@ -679,7 +717,7 @@ def main() -> None:
     nt_stats = _build_and_upload_summaries(all_results, nt_keys, r2)
 
     print("Building and uploading plots...")
-    _build_and_upload_plots(nt_keys, nt_stats, r2)
+    _build_and_upload_plots(nt_keys, nt_stats, r2, local_plots_dir=args.local_plots_dir)
 
     print("\nDone.")
 
