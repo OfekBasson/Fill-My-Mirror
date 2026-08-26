@@ -64,3 +64,13 @@ class R2Client:
             return True
         except ClientError:
             return False
+
+    def delete_prefix(self, prefix: str) -> int:
+        """Delete every object under `prefix`. Returns the number of objects deleted."""
+        keys = self.list_keys(prefix)
+        for i in range(0, len(keys), 1000):
+            batch = keys[i:i + 1000]
+            self._s3.delete_objects(
+                Bucket=self._bucket, Delete={"Objects": [{"Key": k} for k in batch]}
+            )
+        return len(keys)

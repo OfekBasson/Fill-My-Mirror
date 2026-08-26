@@ -198,6 +198,111 @@ def _compute_psnr(ref: np.ndarray, arr: np.ndarray, mask: np.ndarray) -> float:
     return 10.0 * math.log10(1.0 / mse)
 
 
+def _prepare_mask(mask_pil: Image.Image, shape: tuple[int, int]) -> np.ndarray:
+    """Resize a mask image (nearest-neighbour) to ``shape`` = (H, W) and threshold to bool."""
+    h, w = shape
+    arr = np.asarray(mask_pil.convert("L").resize((w, h), Image.NEAREST), dtype=np.uint8)
+    return arr > 127
+
+
+def _shift_full(arr: np.ndarray, dy: int, dx: int, pad_value: Optional[bool] = None) -> np.ndarray:
+    """
+    Translate a full (H, W[, C]) array by (dy, dx) pixels (positive dy = down,
+    positive dx = right). The border the shift exposes is filled by
+    edge-replication (``pad_value=None`` — appropriate for image content) or a
+    constant (``pad_value=False`` — appropriate for boolean masks, so a
+    shifted-in border can never read as "inside the mask").
+    """
+    if dy == 0 and dx == 0:
+        return arr
+    h, w = arr.shape[:2]
+    pad = max(abs(dy), abs(dx))
+    pad_width = ((pad, pad), (pad, pad)) + ((0, 0),) * (arr.ndim - 2)
+    if pad_value is None:
+        padded = np.pad(arr, pad_width, mode="edge")
+    else:
+        padded = np.pad(arr, pad_width, mode="constant", constant_values=pad_value)
+    return padded[pad - dy:pad - dy + h, pad - dx:pad - dx + w]
+
+
+def compute_jitter_psnr(
+    ref: np.ndarray,
+    arr: np.ndarray,
+    mask: np.ndarray,
+    jitter_radius: int = 3,
+) -> dict:
+    """
+    Per-pixel local-jitter-tolerant PSNR/MSE:
+
+        MSE_jitter = mean_{(x,y) in mask} min_{(a,b) in [-J,J]^2} ||ref(x,y) - arr(x+a,y+b)||^2
+
+    Each pixel picks its own best local offset independently, within a
+    small ``jitter_radius`` = J — there is no shared, whole-region offset.
+
+    CAVEAT (this is why it's implemented for comparison, not as a
+    recommended metric): with no requirement that neighbouring pixels agree
+    on a similar offset, this has no coherence constraint at all — a real
+    misregistration moves the whole reflection together, but this metric
+    doesn't check for that. In any locally-smooth or locally-textured
+    region, nearby pixels already resemble each other, so taking a min over
+    a (2J+1)x(2J+1) neighbourhood *for every pixel independently* will show
+    a spurious improvement over plain MSE even between two images with no
+    real relationship — and more so for blurrier/smoother content, since
+    blur increases local self-similarity. See the decoy test in this
+    module's test suite for a direct demonstration.
+
+    Same "mask it" discipline as the rest of this module: a candidate
+    source pixel (x+a, y+b) only counts if it's also inside ``mask``
+    (prevents background/frame content from leaking in) — though because
+    the search radius is tiny, this matters far less here than the
+    coherence problem above. Zero offset (a=b=0) is always a valid
+    candidate for every masked pixel (source == destination mask there), so
+    no pixel is ever fully excluded.
+
+    Returns a dict with ``mse_jitter`` and ``psnr_jitter`` (inf if MSE is 0),
+    plus ``mse_plain``/``psnr_plain`` (jitter_radius=0, i.e. plain masked
+    MSE/PSNR over the same pixels) for direct side-by-side comparison.
+    """
+    ys, xs = np.where(mask)
+    if len(ys) == 0:
+        raise ValueError("mask is empty — no mirror pixels to evaluate.")
+    y0, y1 = int(ys.min()), int(ys.max()) + 1
+    x0, x1 = int(xs.min()), int(xs.max()) + 1
+
+    h, w = mask.shape
+    J = jitter_radius
+    cy0, cy1 = max(0, y0 - J), min(h, y1 + J)
+    cx0, cx1 = max(0, x0 - J), min(w, x1 + J)
+    ref_c = ref[cy0:cy1, cx0:cx1]
+    arr_c = arr[cy0:cy1, cx0:cx1]
+    mask_c = mask[cy0:cy1, cx0:cx1]
+
+    dest_mask = mask_c
+    min_diff2 = None
+    plain_diff2 = ((ref_c - arr_c) ** 2).sum(axis=-1)
+
+    for a in range(-J, J + 1):
+        for b in range(-J, J + 1):
+            arr_shifted = _shift_full(arr_c, a, b, pad_value=None)
+            source_mask = _shift_full(mask_c, a, b, pad_value=False)
+            valid = dest_mask & source_mask
+            diff2 = ((ref_c - arr_shifted) ** 2).sum(axis=-1)
+            # Invalid candidates must never win the per-pixel min — push them to +inf.
+            diff2 = np.where(valid, diff2, np.inf)
+            min_diff2 = diff2 if min_diff2 is None else np.minimum(min_diff2, diff2)
+
+    mse_jitter = float(min_diff2[dest_mask].mean() / ref_c.shape[-1])  # per-channel mean, matching _compute_psnr
+    mse_plain = float(plain_diff2[dest_mask].mean() / ref_c.shape[-1])
+
+    def _psnr(mse: float) -> float:
+        return float("inf") if mse <= 0.0 else 10.0 * math.log10(1.0 / mse)
+
+    return {
+        "mse_jitter": mse_jitter, "psnr_jitter": _psnr(mse_jitter),
+        "mse_plain": mse_plain, "psnr_plain": _psnr(mse_plain),
+    }
+
+
 def _compute_ssim(ref: np.ndarray, arr: np.ndarray, mask: np.ndarray) -> Optional[float]:
     """SSIM averaged over masked pixels. Returns None if skimage is unavailable."""
     if not _SKIMAGE_AVAILABLE:
@@ -298,19 +403,8 @@ def compute_metrics(metrics_input: MetricsInput) -> pd.DataFrame:
     """
     ref = _pil_to_rgb01(metrics_input.gt_image)
 
-    full_mask = np.asarray(
-        metrics_input.full_mirror_mask.convert("L").resize(
-            (ref.shape[1], ref.shape[0]), Image.NEAREST
-        ),
-        dtype=np.uint8,
-    ) > 127
-
-    constrained_mask = np.asarray(
-        metrics_input.constrained_mask.convert("L").resize(
-            (ref.shape[1], ref.shape[0]), Image.NEAREST
-        ),
-        dtype=np.uint8,
-    ) > 127
+    full_mask = _prepare_mask(metrics_input.full_mirror_mask, ref.shape[:2])
+    constrained_mask = _prepare_mask(metrics_input.constrained_mask, ref.shape[:2])
 
     if full_mask.sum() == 0:
         raise ValueError("Full mirror mask is empty (no pixels above threshold).")
