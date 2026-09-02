@@ -39,7 +39,7 @@ The following instructions were tested on **Linux with Python 3.10**.
 Clone the repository **with submodules** to also download the MoGe and MASt3R dependencies.
 
 ```bash
-git clone --recurse-submodules https://github.com/[anonymous]/Fill-My-Mirror.git
+git clone --recurse-submodules https://github.com/OfekBasson/Fill-My-Mirror.git
 cd Fill-My-Mirror
 ```
 
