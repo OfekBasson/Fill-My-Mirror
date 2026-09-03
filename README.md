@@ -496,9 +496,10 @@ Mirror logs a warning and silently ignores it.
 If you use this code in your research, please cite:
 
 ```bibtex
-@article{fill_my_mirror,
-  title={Fill My Mirror},
-  author={[Anonymous]},
-  year={2026}
+@article{fillmymirror2026,
+  title   = {Fill My Mirror: Geometry-Constrained Mirror Inpainting},
+  author  = {Basson, Ofek and Vainer, Shimon and Hel-Or, Yacov and Fried, Ohad},
+  journal = {arXiv preprint arXiv:XXXX.XXXXX},
+  year    = {2026},
 }
 ```
