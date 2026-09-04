@@ -1,6 +1,6 @@
 # 🪞 Fill My Mirror
 <div align="center">
-  <a href="https://google.com"><img src='https://img.shields.io/badge/arXiv-Paper-red?logo=arxiv&logoColor=white' alt='arXiv'></a>
+  <a href="https://arxiv.org/abs/2609.03740"><img src='https://img.shields.io/badge/arXiv-Paper-red?logo=arxiv&logoColor=white' alt='arXiv'></a>
   <a href='https://ofekbasson.com/FillMyMirror/'><img src='https://img.shields.io/badge/Project_Page-Website-green?logo=googlechrome&logoColor=white' alt='Project Page'></a>
   <a href='https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20Real%20Images-blue'></a>
   <a href='https://huggingface.co/datasets/OfekBassonResearch/Fill-My-Mirror-Blender'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20Blender%20Scenes-blue'></a>
@@ -499,7 +499,7 @@ If you use this code in your research, please cite:
 @article{fillmymirror2026,
   title   = {Fill My Mirror: Geometry-Constrained Mirror Inpainting},
   author  = {Basson, Ofek and Vainer, Shimon and Hel-Or, Yacov and Fried, Ohad},
-  journal = {arXiv preprint arXiv:XXXX.XXXXX},
+  journal = {arXiv preprint arXiv:2609.03740},
   year    = {2026},
 }
 ```
